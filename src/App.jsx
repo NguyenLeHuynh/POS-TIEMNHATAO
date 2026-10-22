@@ -9,8 +9,8 @@ import {
 } from 'lucide-react';
 
 // 🔴 DÁN TRỰC TIẾP URL VÀ ANON KEY CỦA SUPABASE VÀO 2 DÒNG NÀY:
-const DIRECT_SUPABASE_URL = 'DÁN_SUPABASE_URL_CỦA_NÍ_VÀO_ĐÂY';
-const DIRECT_SUPABASE_KEY = 'DÁN_SUPABASE_ANON_KEY_CỦA_NÍ_VÀO_ĐÂY';
+const DIRECT_SUPABASE_URL = 'https://wnkybaylqkiimzrjmawv.supabase.co';
+const DIRECT_SUPABASE_KEY = 'sb_publishable_VMesRURnTkJ-VYQCMBpmDw_6ZO-Gl2c';
 
 const supabaseUrl = (DIRECT_SUPABASE_URL && !DIRECT_SUPABASE_URL.includes('DÁN_')) ? DIRECT_SUPABASE_URL : import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = (DIRECT_SUPABASE_KEY && !DIRECT_SUPABASE_KEY.includes('DÁN_')) ? DIRECT_SUPABASE_KEY : import.meta.env.VITE_SUPABASE_ANON_KEY;
