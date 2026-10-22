@@ -10,7 +10,7 @@ import {
 
 // 🔴 DÁN TRỰC TIẾP URL VÀ ANON KEY CỦA SUPABASE VÀO 2 DÒNG NÀY:
 const DIRECT_SUPABASE_URL = 'https://wnkybaylqkiimzrjmawv.supabase.co';
-const DIRECT_SUPABASE_KEY = 'sb_publishable_VMesRURnTkJ-VYQCMBpmDw_6ZO-Gl2c';
+const DIRECT_SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indua3liYXlscWtpaW16cmptYXd2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI2MzEwMDIsImV4cCI6MjEwODIwNzAwMn0.4OMkGtTs2Z_z5Kz1Ba71ML23BpMlJsza0QYlYj2-rjs';
 
 const supabaseUrl = (DIRECT_SUPABASE_URL && !DIRECT_SUPABASE_URL.includes('DÁN_')) ? DIRECT_SUPABASE_URL : import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = (DIRECT_SUPABASE_KEY && !DIRECT_SUPABASE_KEY.includes('DÁN_')) ? DIRECT_SUPABASE_KEY : import.meta.env.VITE_SUPABASE_ANON_KEY;
