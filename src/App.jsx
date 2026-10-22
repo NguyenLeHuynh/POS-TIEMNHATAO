@@ -108,13 +108,12 @@ export default function App() {
     startApp();
   }, []);
 
-  // 🔄 ĐỒNG BỘ NẦM CỨ MỖI 4 GIÂY
+  // 🔄 ĐỒNG BỘ NẦM CỨ MỖI 5 GIÂY
   useEffect(() => {
     if (!currentUser) return;
-    loadAllData();
     const interval = setInterval(() => {
       loadAllData();
-    }, 4000);
+    }, 5000);
     return () => clearInterval(interval);
   }, [currentUser, activeTab]);
 
@@ -156,15 +155,15 @@ export default function App() {
         // 1. Nhân viên
         const { data: cloudStaff } = await supabase.from('staff').select('*');
         if (cloudStaff && cloudStaff.length > 0) {
-          await localDb.staff.clear();
-          await localDb.staff.bulkPut(cloudStaff);
+          setStaffList(cloudStaff);
+          try { await localDb.staff.clear(); await localDb.staff.bulkPut(cloudStaff); } catch (e) {}
         }
 
         // 2. Món nước
         const { data: cloudProducts } = await supabase.from('products').select('*');
         if (cloudProducts && cloudProducts.length > 0) {
-          await localDb.products.clear();
-          await localDb.products.bulkPut(cloudProducts);
+          setProducts(cloudProducts);
+          try { await localDb.products.clear(); await localDb.products.bulkPut(cloudProducts); } catch (e) {}
         } else {
           autoSeedCloudProducts();
         }
@@ -172,15 +171,14 @@ export default function App() {
         // 3. Đơn hàng
         const { data: cloudOrders } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
         if (cloudOrders && cloudOrders.length > 0) {
-          await localDb.orders.clear();
-          await localDb.orders.bulkPut(cloudOrders);
+          try { await localDb.orders.clear(); await localDb.orders.bulkPut(cloudOrders); } catch (e) {}
         }
 
         // 4. Kho nguyên liệu
         const { data: cloudInv } = await supabase.from('inventory').select('*');
         if (cloudInv && cloudInv.length > 0) {
-          await localDb.inventory.clear();
-          await localDb.inventory.bulkPut(cloudInv);
+          setInventory(cloudInv);
+          try { await localDb.inventory.clear(); await localDb.inventory.bulkPut(cloudInv); } catch (e) {}
         } else {
           autoSeedCloudInventory();
         }
@@ -188,30 +186,34 @@ export default function App() {
         // 5. Danh mục
         const { data: cloudCat } = await supabase.from('categories').select('*');
         if (cloudCat && cloudCat.length > 0) {
-          await localDb.categories.clear();
-          await localDb.categories.bulkPut(cloudCat);
+          const catNames = cloudCat.map(c => c.name);
+          setCategories(['Tất cả', ...new Set(catNames)]);
+          try { await localDb.categories.clear(); await localDb.categories.bulkPut(cloudCat); } catch (e) {}
         }
 
         // 6. Báo cáo sự cố
         const { data: cloudIssues } = await supabase.from('issue_reports').select('*');
         if (cloudIssues && cloudIssues.length > 0) {
-          await localDb.issue_reports.clear();
-          await localDb.issue_reports.bulkPut(cloudIssues);
+          setIssueReports(cloudIssues.reverse());
+          try { await localDb.issue_reports.clear(); await localDb.issue_reports.bulkPut(cloudIssues); } catch (e) {}
         }
+      } else {
+        const catList = await localDb.categories.toArray();
+        if (catList.length > 0) setCategories(['Tất cả', ...catList.map(c => c.name)]);
+
+        const prodList = await localDb.products.toArray();
+        if (prodList.length > 0) setProducts(prodList);
+
+        const invList = await localDb.inventory.toArray();
+        if (invList.length > 0) setInventory(invList);
+
+        const staff = await localDb.staff.toArray();
+        if (staff.length > 0) setStaffList(staff);
+
+        const issues = await localDb.issue_reports.toArray();
+        if (issues.length > 0) setIssueReports(issues.reverse());
       }
 
-      const catList = await localDb.categories.toArray();
-      setCategories(['Tất cả', ...catList.map(c => c.name)]);
-      
-      const prodList = await localDb.products.toArray();
-      if (prodList.length > 0) setProducts(prodList);
-
-      const invList = await localDb.inventory.toArray();
-      if (invList.length > 0) setInventory(invList);
-
-      setStaffList(await localDb.staff.toArray());
-      const issueList = await localDb.issue_reports.toArray();
-      setIssueReports(issueList.reverse());
       fetchTodayOrders();
     } catch (err) {
       console.error('Lỗi nạp dữ liệu:', err);
@@ -239,35 +241,39 @@ export default function App() {
     } catch (e) {}
   };
 
-  // 📂 QUẢN LÝ DANH MỤC MÓN
+  // 📂 1. THÊM & XÓA DANH MỤC MÓN (HOẠT ĐỘNG TỨC THÌ 100%)
   const handleAddCategory = async (e) => {
     e.preventDefault();
     const name = newCatName.trim();
     if (!name) return;
     if (categories.includes(name)) return alert('Danh mục này đã tồn tại!');
 
+    // Cập nhật giao diện lập tức
+    setCategories(prev => [...prev, name]);
+    setNewCatName('');
+
+    // Đẩy ngầm lên Supabase & lưu máy
     if (supabase) {
       try { await supabase.from('categories').insert([{ name }]); } catch (err) {}
     }
-    await localDb.categories.add({ name });
-
-    setNewCatName('');
-    loadAllData();
+    try { await localDb.categories.add({ name }); } catch (err) {}
   };
 
   const handleDeleteCategory = async (catName) => {
     if (catName === 'Tất cả') return alert('Không thể xóa danh mục này!');
     if (!window.confirm(`Bạn có chắc muốn xóa danh mục "${catName}"?`)) return;
 
+    setCategories(prev => prev.filter(c => c !== catName));
+    if (selectedCategory === catName) setSelectedCategory('Tất cả');
+
     if (supabase) {
       try { await supabase.from('categories').delete().eq('name', catName); } catch (err) {}
     }
-    const allCats = await localDb.categories.toArray();
-    const catObj = allCats.find(c => c.name === catName);
-    if (catObj) await localDb.categories.delete(catObj.id);
-
-    if (selectedCategory === catName) setSelectedCategory('Tất cả');
-    loadAllData();
+    try {
+      const allCats = await localDb.categories.toArray();
+      const catObj = allCats.find(c => c.name === catName);
+      if (catObj) await localDb.categories.delete(catObj.id);
+    } catch (err) {}
   };
 
   // 🟢 ĐĂNG NHẬP
@@ -312,114 +318,131 @@ export default function App() {
     setCart([]);
   };
 
-  // 🟢 CẤP TÀI KHOẢN NHÂN VIÊN (ĐÃ SỬA TRIỆT ĐỂ LỖI UUID)
+  // 👥 2. CẤP TÀI KHOẢN NHÂN VIÊN (HOẠT ĐỘNG TỨC THÌ 100%)
   const handleCreateStaff = async (e) => {
     e.preventDefault();
     if (!newStaffName || !newStaffUser || !newStaffPass) return alert('Vui lòng nhập đủ thông tin!');
 
-    // Payload sạch 100% không bao giờ chứa id
-    const supabasePayload = {
+    const staffPayload = {
       full_name: newStaffName.trim(),
       username: newStaffUser.trim(),
       password: newStaffPass.trim(),
       role: 'STAFF'
     };
 
-    // 1. Đẩy lên Supabase TRƯỚC
+    let newStaff = { ...staffPayload, id: `local_staff_${Date.now()}` };
+
     if (supabase) {
       try { 
-        const { error } = await supabase.from('staff').insert([supabasePayload]);
+        const { data, error } = await supabase.from('staff').insert([staffPayload]).select();
         if (error) {
           alert(`⚠️ Lỗi Cloud Supabase: ${error.message}`);
           return;
         }
+        if (data && data.length > 0) newStaff = data[0];
       } catch (err) {
         alert(`Lỗi kết nối Cloud: ${err.message}`);
         return;
       }
     }
 
-    // 2. Lưu vào bộ nhớ máy SAU
-    try { await localDb.staff.add({ ...supabasePayload }); } catch (err) {}
+    setStaffList(prev => [...prev, newStaff]);
+    try { await localDb.staff.add(newStaff); } catch (err) {}
 
-    alert(`✅ Đã cấp thành công tài khoản "${newStaffName}" lên Cloud!`);
+    alert(`✅ Đã cấp thành công tài khoản "${newStaffName}"!`);
     setNewStaffName(''); setNewStaffUser(''); setNewStaffPass('');
-    await loadAllData();
   };
 
   const handleDeleteStaff = async (id) => {
     if (!window.confirm('Bạn có chắc muốn xóa nhân viên này?')) return;
-    const staffObj = await localDb.staff.get(id);
+    const staffObj = staffList.find(s => s.id === id);
+    setStaffList(prev => prev.filter(s => s.id !== id));
 
     if (staffObj && supabase) {
       try { await supabase.from('staff').delete().eq('username', staffObj.username); } catch (err) {}
     }
-    await localDb.staff.delete(id);
-    loadAllData();
+    try { await localDb.staff.delete(id); } catch (err) {}
   };
 
-  // 🟢 QUẢN LÝ MÓN NƯỚC (THÊM / SỬA / XÓA)
+  // 🍵 3. QUẢN LÝ MÓN NƯỚC (THÊM / SỬA / XÓA HOẠT ĐỘNG TỨC THÌ 100%)
   const handleSaveProduct = async (e) => {
     e.preventDefault();
-    if (!editingProduct.name || !editingProduct.price) return;
+    if (!editingProduct.name || !editingProduct.price) return alert('Vui lòng nhập tên và giá món!');
 
     const prodPayload = {
       name: editingProduct.name.trim(),
       price: Number(editingProduct.price),
-      category: editingProduct.category,
+      category: editingProduct.category || categories.find(c => c !== 'Tất cả') || 'Matcha Series',
       image: editingProduct.image || '🍵',
-      stock: Number(editingProduct.stock) || 50,
+      stock: Number(editingProduct.stock) >= 0 ? Number(editingProduct.stock) : 50,
       is_available: true
     };
 
     const isUUID = editingProduct.id && typeof editingProduct.id === 'string' && editingProduct.id.includes('-');
 
-    if (editingProduct.id && isUUID) {
-      if (supabase) {
+    if (editingProduct.id) {
+      // Cập nhật món đã có
+      setProducts(prev => prev.map(p => p.id === editingProduct.id ? { ...p, ...prodPayload } : p));
+
+      if (supabase && isUUID) {
         try { await supabase.from('products').update(prodPayload).eq('id', editingProduct.id); } catch (err) {}
       }
-      await localDb.products.update(editingProduct.id, prodPayload);
+      try { await localDb.products.update(editingProduct.id, prodPayload); } catch (err) {}
     } else {
+      // Thêm món mới
+      let newProd = { ...prodPayload, id: `local_prod_${Date.now()}` };
+
       if (supabase) {
-        try { await supabase.from('products').insert([prodPayload]); } catch (err) {}
+        try {
+          const { data, error } = await supabase.from('products').insert([prodPayload]).select();
+          if (data && data.length > 0) newProd = data[0];
+        } catch (err) {}
       }
-      await localDb.products.add({ ...prodPayload });
+
+      setProducts(prev => [...prev, newProd]);
+      try { await localDb.products.add(newProd); } catch (err) {}
     }
 
     setShowProductModal(false);
     setEditingProduct(null);
-    await loadAllData();
   };
 
   const handleDeleteProduct = async (id) => {
     if (!window.confirm('Bạn có chắc muốn xóa món nước này khỏi menu?')) return;
+    setProducts(prev => prev.filter(p => p.id !== id));
+
     if (supabase && typeof id === 'string' && id.includes('-')) {
       try { await supabase.from('products').delete().eq('id', id); } catch (err) {}
     }
-    await localDb.products.delete(id);
-    loadAllData();
+    try { await localDb.products.delete(id); } catch (err) {}
   };
 
-  // 🟢 QUẢN LÝ KHO NGUYÊN LIỆU (ĐÃ SỬA THÊM/SỬA KHO)
+  // 📦 4. QUẢN LÝ KHO NGUYÊN LIỆU (THÊM / SỬA KHO TỨC THÌ 100%)
   const handleAddInventory = async (e) => {
     e.preventDefault();
-    if (!newInvItem.name) return;
+    if (!newInvItem.name) return alert('Vui lòng nhập tên nguyên liệu!');
     
     const invPayload = { 
       name: newInvItem.name.trim(), 
-      quantity: Number(newInvItem.quantity), 
-      unit: newInvItem.unit.trim(), 
-      min_quantity: Number(newInvItem.min_quantity) 
+      quantity: Number(newInvItem.quantity) || 0, 
+      unit: newInvItem.unit.trim() || 'kg', 
+      min_quantity: Number(newInvItem.min_quantity) || 0 
     };
 
+    let newInv = { ...invPayload, id: `local_inv_${Date.now()}` };
+
     if (supabase) {
-      try { await supabase.from('inventory').insert([invPayload]); } catch (err) {}
+      try {
+        const { data, error } = await supabase.from('inventory').insert([invPayload]).select();
+        if (data && data.length > 0) newInv = data[0];
+      } catch (err) {}
     }
-    await localDb.inventory.add({ ...invPayload });
+
+    setInventory(prev => [...prev, newInv]);
+    try { await localDb.inventory.add(newInv); } catch (err) {}
 
     setNewInvItem({ name: '', quantity: 10, unit: 'kg', min_quantity: 3 });
     setShowInvModal(false);
-    await loadAllData();
   };
 
   const updateInventoryQty = async (id, delta) => {
@@ -427,6 +450,7 @@ export default function App() {
     if (!item) return;
 
     const newQty = Math.max(0, Number(item.quantity) + delta);
+    setInventory(prev => prev.map(x => x.id === id ? { ...x, quantity: newQty } : x));
 
     if (supabase) {
       try { 
@@ -438,7 +462,6 @@ export default function App() {
       } catch (err) {}
     }
     try { await localDb.inventory.update(id, { quantity: newQty }); } catch (e) {}
-    loadAllData();
   };
 
   const exportInventoryExcel = () => {
@@ -460,7 +483,7 @@ export default function App() {
     XLSX.writeFile(wb, `BaoCaoTonKho_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  // 🟢 KÊ KHAI THUẾ TT88 (CHUẨN THÔNG TƯ 88/2021/TT-BTC)
+  // 📄 5. KÊ KHAI THUẾ TT88 (CHUẨN THÔNG TƯ 88/2021/TT-BTC)
   const generateTaxPreview = async () => {
     const orders = await localDb.orders.toArray();
     const dailyMap = {};
@@ -514,7 +537,7 @@ export default function App() {
     XLSX.writeFile(wb, `SoKeKhaiThue_TT88_${taxStartDate}_To_${taxEndDate}.xlsx`);
   };
 
-  // 🟢 BÁO CÁO SỰ CỐ QUÁN
+  // 💬 6. BÁO CÁO SỰ CỐ QUÁN
   const handleSubmitIssue = async (e) => {
     e.preventDefault();
     if (!newIssueTitle || !newIssueContent) return;
@@ -1193,7 +1216,7 @@ export default function App() {
         </div>
       )}
 
-      {/* POPUP QUẢN LÝ DANH MỤC */}
+      {/* POPUP QUẢN LÝ DANH MỤC MÓN */}
       {showCategoryModal && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-5 max-w-sm w-full space-y-3 shadow-2xl animate-in fade-in zoom-in-95">
@@ -1215,7 +1238,7 @@ export default function App() {
                 onChange={(e) => setNewCatName(e.target.value)} 
                 className="flex-1 border rounded-2xl px-3 py-1.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-emerald-600"
               />
-              <button type="submit" className="bg-emerald-700 text-white font-bold px-3 py-1.5 rounded-2xl text-xs shadow-md shrink-0">
+              <button type="submit" className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-3 py-1.5 rounded-2xl text-xs shadow-md shrink-0 active:scale-95 transition-all">
                 + Thêm
               </button>
             </form>
@@ -1294,7 +1317,7 @@ export default function App() {
         </div>
       )}
 
-      {/* POPUP THÊM/SỬA MÓN NƯỚC */}
+      {/* POPUP THÊM / SỬA MÓN NƯỚC (ĐẦY ĐỦ CÁC Ô NHẬP TỒN KHO & DANH MỤC) */}
       {showProductModal && editingProduct && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl animate-in fade-in zoom-in-95">
@@ -1302,27 +1325,33 @@ export default function App() {
             <form onSubmit={handleSaveProduct} className="space-y-3 text-xs">
               <div>
                 <label className="font-bold block mb-1">Tên món nước:</label>
-                <input type="text" required value={editingProduct.name} onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })} className="w-full border rounded-2xl p-2.5 font-semibold outline-none focus:ring-2 focus:ring-emerald-600" />
+                <input type="text" required value={editingProduct.name || ''} onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })} className="w-full border rounded-2xl p-2.5 font-semibold outline-none focus:ring-2 focus:ring-emerald-600" />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="font-bold block mb-1">Giá bán (VNĐ):</label>
-                  <input type="number" required value={editingProduct.price} onChange={(e) => setEditingProduct({ ...editingProduct, price: Number(e.target.value) })} className="w-full border rounded-2xl p-2.5 font-semibold outline-none focus:ring-2 focus:ring-emerald-600" />
+                  <input type="number" required value={editingProduct.price || ''} onChange={(e) => setEditingProduct({ ...editingProduct, price: e.target.value })} className="w-full border rounded-2xl p-2.5 font-semibold outline-none focus:ring-2 focus:ring-emerald-600" />
                 </div>
                 <div>
                   <label className="font-bold block mb-1">Emoji Biểu Tượng:</label>
-                  <input type="text" required value={editingProduct.image} onChange={(e) => setEditingProduct({ ...editingProduct, image: e.target.value })} className="w-full border rounded-2xl p-2.5 font-semibold text-center outline-none focus:ring-2 focus:ring-emerald-600" />
+                  <input type="text" required value={editingProduct.image || '🍵'} onChange={(e) => setEditingProduct({ ...editingProduct, image: e.target.value })} className="w-full border rounded-2xl p-2.5 font-semibold text-center outline-none focus:ring-2 focus:ring-emerald-600" />
                 </div>
               </div>
-              <div>
-                <label className="font-bold block mb-1">Danh mục món:</label>
-                <select value={editingProduct.category} onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value })} className="w-full border rounded-2xl p-2.5 font-semibold outline-none focus:ring-2 focus:ring-emerald-600">
-                  {categories.filter(c => c !== 'Tất cả').map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="font-bold block mb-1">Danh mục món:</label>
+                  <select value={editingProduct.category || categories[1] || 'Matcha Series'} onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value })} className="w-full border rounded-2xl p-2.5 font-semibold outline-none focus:ring-2 focus:ring-emerald-600">
+                    {categories.filter(c => c !== 'Tất cả').map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="font-bold block mb-1">Tồn kho ban đầu:</label>
+                  <input type="number" required value={editingProduct.stock ?? 50} onChange={(e) => setEditingProduct({ ...editingProduct, stock: e.target.value })} className="w-full border rounded-2xl p-2.5 font-semibold outline-none focus:ring-2 focus:ring-emerald-600" />
+                </div>
               </div>
               <div className="flex gap-2 pt-2">
-                <button type="button" onClick={() => setShowProductModal(false)} className="flex-1 py-2.5 border rounded-2xl font-bold text-gray-600">Hủy</button>
-                <button type="submit" className="flex-1 py-2.5 bg-emerald-700 text-white rounded-2xl font-bold shadow-md active:scale-95 transition-all">Lưu Món</button>
+                <button type="button" onClick={() => { setShowProductModal(false); setEditingProduct(null); }} className="flex-1 py-2.5 border rounded-2xl font-bold text-gray-600">Hủy</button>
+                <button type="submit" className="flex-1 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-2xl font-bold shadow-md active:scale-95 transition-all">Lưu Món</button>
               </div>
             </form>
           </div>
@@ -1351,7 +1380,7 @@ export default function App() {
               </div>
               <div className="flex gap-2 pt-2">
                 <button type="button" onClick={() => setShowInvModal(false)} className="flex-1 py-2.5 border rounded-2xl font-bold text-gray-600">Hủy</button>
-                <button type="submit" className="flex-1 py-2.5 bg-emerald-700 text-white rounded-2xl font-bold shadow-md active:scale-95 transition-all">Lưu Kho</button>
+                <button type="submit" className="flex-1 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-2xl font-bold shadow-md active:scale-95 transition-all">Lưu Kho</button>
               </div>
             </form>
           </div>
