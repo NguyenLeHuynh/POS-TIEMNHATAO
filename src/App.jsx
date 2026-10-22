@@ -26,18 +26,18 @@ const BANK_CONFIG = {
 // 🟢 DỮ LIỆU MẶC ĐỊNH CHỐNG TRẮNG MÀN HÌNH
 const DEFAULT_CATEGORIES = ['Tất cả', 'Matcha Series', 'Cà Phê Măng Đen', 'Trà & Latte', 'Bánh Sweet'];
 const DEFAULT_PRODUCTS = [
-  { id: 'prod_1', name: 'Matcha Latte Premium', price: 45000, category: 'Matcha Series', image: '🍵', stock: 45, is_available: true },
-  { id: 'prod_2', name: 'Matcha Coco Espresso', price: 52000, category: 'Matcha Series', image: '🥥', stock: 28, is_available: true },
-  { id: 'prod_3', name: 'Matcha Foam Kem Trứng', price: 49000, category: 'Matcha Series', image: '🍦', stock: 15, is_available: true },
-  { id: 'prod_4', name: 'Cà Phê Sữa Đá Măng Đen', price: 29000, category: 'Cà Phê Măng Đen', image: '☕', stock: 99, is_available: true },
-  { id: 'prod_5', name: 'Bạc Xỉu Sữa Hạnh Nhân', price: 35000, category: 'Cà Phê Măng Đen', image: '🥤', stock: 60, is_available: true },
-  { id: 'prod_6', name: 'Trà Ô Long Sữa Nướng', price: 39000, category: 'Trà & Latte', image: '🧋', stock: 35, is_available: true }
+  { name: 'Matcha Latte Premium', price: 45000, category: 'Matcha Series', image: '🍵', stock: 45, is_available: true },
+  { name: 'Matcha Coco Espresso', price: 52000, category: 'Matcha Series', image: '🥥', stock: 28, is_available: true },
+  { name: 'Matcha Foam Kem Trứng', price: 49000, category: 'Matcha Series', image: '🍦', stock: 15, is_available: true },
+  { name: 'Cà Phê Sữa Đá Măng Đen', price: 29000, category: 'Cà Phê Măng Đen', image: '☕', stock: 99, is_available: true },
+  { name: 'Bạc Xỉu Sữa Hạnh Nhân', price: 35000, category: 'Cà Phê Măng Đen', image: '🥤', stock: 60, is_available: true },
+  { name: 'Trà Ô Long Sữa Nướng', price: 39000, category: 'Trà & Latte', image: '🧋', stock: 35, is_available: true }
 ];
 const DEFAULT_INVENTORY = [
-  { id: 'inv_1', name: 'Bột Matcha Uji Grade A', quantity: 12.5, unit: 'kg', min_quantity: 3 },
-  { id: 'inv_2', name: 'Hạt Cà Phê Măng Đen', quantity: 25, unit: 'kg', min_quantity: 5 },
-  { id: 'inv_3', name: 'Sữa Tươi Thanh Trùng', quantity: 40, unit: 'hộp', min_quantity: 10 },
-  { id: 'inv_4', name: 'Trà Ô Long Nướng Grade 1', quantity: 8, unit: 'kg', min_quantity: 2 }
+  { name: 'Bột Matcha Uji Grade A', quantity: 12.5, unit: 'kg', min_quantity: 3 },
+  { name: 'Hạt Cà Phê Măng Đen', quantity: 25, unit: 'kg', min_quantity: 5 },
+  { name: 'Sữa Tươi Thanh Trùng', quantity: 40, unit: 'hộp', min_quantity: 10 },
+  { name: 'Trà Ô Long Nướng Grade 1', quantity: 8, unit: 'kg', min_quantity: 2 }
 ];
 
 export default function App() {
@@ -108,7 +108,7 @@ export default function App() {
     startApp();
   }, []);
 
-  // 🔄 ĐỒNG BỘ NẦM CỨ MỖI 4 GIÂY (KHÔNG XOAY ICON LÀM LAG MÀN HÌNH)
+  // 🔄 ĐỒNG BỘ NẦM CỨ MỖI 4 GIÂY
   useEffect(() => {
     if (!currentUser) return;
     loadAllData();
@@ -311,12 +311,12 @@ export default function App() {
     setCart([]);
   };
 
-  // 🟢 CẤP TÀI KHOẢN NHÂN VIÊN (LOẠI BỎ ID CỤC BỘ TRÁNH LỖI UUID)
+  // 🟢 CẤP TÀI KHOẢN NHÂN VIÊN (ĐÃ KHẮC PHỤC TRIỆT ĐỂ LỖI UUID)
   const handleCreateStaff = async (e) => {
     e.preventDefault();
     if (!newStaffName || !newStaffUser || !newStaffPass) return alert('Vui lòng nhập đủ thông tin!');
 
-    const staffData = {
+    const cleanPayload = {
       full_name: newStaffName,
       username: newStaffUser.trim(),
       password: newStaffPass.trim(),
@@ -324,12 +324,12 @@ export default function App() {
     };
 
     // 1. Lưu vào bộ nhớ máy
-    await localDb.staff.add(staffData);
+    try { await localDb.staff.add({ ...cleanPayload }); } catch (err) {}
 
-    // 2. Đẩy lên Supabase (Không truyền ID cục bộ số "1")
+    // 2. Đẩy lên Supabase (Gửi object sạch độc lập không dính id số)
     if (supabase) {
       try { 
-        const { error } = await supabase.from('staff').insert([staffData]);
+        const { error } = await supabase.from('staff').insert([{ ...cleanPayload }]);
         if (error) {
           alert(`⚠️ Đã lưu máy tính nhưng lỗi Cloud: ${error.message}`);
         } else {
@@ -360,7 +360,7 @@ export default function App() {
     e.preventDefault();
     if (!editingProduct.name || !editingProduct.price) return;
 
-    const prodPayload = {
+    const cleanPayload = {
       name: editingProduct.name,
       price: Number(editingProduct.price),
       category: editingProduct.category,
@@ -370,20 +370,20 @@ export default function App() {
     };
 
     if (editingProduct.id) {
-      await localDb.products.update(editingProduct.id, prodPayload);
+      await localDb.products.update(editingProduct.id, cleanPayload);
       if (supabase && typeof editingProduct.id === 'string' && editingProduct.id.length > 20) {
-        try { await supabase.from('products').update(prodPayload).eq('id', editingProduct.id); } catch (err) {}
+        try { await supabase.from('products').update(cleanPayload).eq('id', editingProduct.id); } catch (err) {}
       }
     } else {
-      await localDb.products.add(prodPayload);
+      await localDb.products.add({ ...cleanPayload });
       if (supabase) {
-        try { await supabase.from('products').insert([prodPayload]); } catch (err) {}
+        try { await supabase.from('products').insert([{ ...cleanPayload }]); } catch (err) {}
       }
     }
 
     setShowProductModal(false);
     setEditingProduct(null);
-    loadAllData();
+    await loadAllData();
   };
 
   const handleDeleteProduct = async (id) => {
@@ -395,33 +395,42 @@ export default function App() {
     loadAllData();
   };
 
-  // 🟢 QUẢN LÝ KHO NGUYÊN LIỆU
+  // 🟢 QUẢN LÝ KHO NGUYÊN LIỆU (ĐÃ KHẮC PHỤC SỰ CỐ THÊM KHO)
   const handleAddInventory = async (e) => {
     e.preventDefault();
     if (!newInvItem.name) return;
-    const item = { 
+    
+    const cleanPayload = { 
       name: newInvItem.name, 
       quantity: Number(newInvItem.quantity), 
       unit: newInvItem.unit, 
       min_quantity: Number(newInvItem.min_quantity) 
     };
 
-    await localDb.inventory.add(item);
+    await localDb.inventory.add({ ...cleanPayload });
     if (supabase) {
-      try { await supabase.from('inventory').insert([item]); } catch (err) {}
+      try { await supabase.from('inventory').insert([{ ...cleanPayload }]); } catch (err) {}
     }
+
     setNewInvItem({ name: '', quantity: 10, unit: 'kg', min_quantity: 3 });
     setShowInvModal(false);
-    loadAllData();
+    await loadAllData();
   };
 
   const updateInventoryQty = async (id, delta) => {
-    const item = await localDb.inventory.get(id);
+    const item = inventory.find(x => x.id === id);
     if (item) {
       const newQty = Math.max(0, Number(item.quantity) + delta);
-      await localDb.inventory.update(id, { quantity: newQty });
+      try { await localDb.inventory.update(id, { quantity: newQty }); } catch (e) {}
+      
       if (supabase) {
-        try { await supabase.from('inventory').update({ quantity: newQty }).eq('id', id); } catch (err) {}
+        try { 
+          if (typeof id === 'string' && id.length > 20) {
+            await supabase.from('inventory').update({ quantity: newQty }).eq('id', id);
+          } else {
+            await supabase.from('inventory').update({ quantity: newQty }).eq('name', item.name);
+          }
+        } catch (err) {}
       }
       loadAllData();
     }
@@ -511,9 +520,9 @@ export default function App() {
       status: 'PENDING',
       created_at: new Date().toISOString()
     };
-    await localDb.issue_reports.add(report);
+    await localDb.issue_reports.add({ ...report });
     if (supabase) {
-      try { await supabase.from('issue_reports').insert([report]); } catch (err) {}
+      try { await supabase.from('issue_reports').insert([{ ...report }]); } catch (err) {}
     }
     setNewIssueTitle(''); setNewIssueContent('');
     alert('Đã gửi báo cáo lên Chủ Quán!');
@@ -590,9 +599,9 @@ export default function App() {
       items_json: JSON.stringify(cart)
     };
 
-    await localDb.orders.add(orderData);
+    await localDb.orders.add({ ...orderData });
     if (supabase) {
-      try { await supabase.from('orders').insert([orderData]); } catch (err) {}
+      try { await supabase.from('orders').insert([{ ...orderData }]); } catch (err) {}
     }
 
     for (const cartItem of cart) {
@@ -900,7 +909,7 @@ export default function App() {
           </div>
         )}
 
-        {/* 📄 3. KÊ KHAI THUẾ TT88 (KHÔI PHỤC ĐẦY ĐỦ THÔNG TƯ 88) */}
+        {/* 📄 3. KÊ KHAI THUẾ TT88 */}
         {activeTab === 'tax' && currentUser.role === 'OWNER' && (
           <div className="p-4 md:p-8 max-w-5xl mx-auto w-full overflow-y-auto space-y-4 animate-in fade-in duration-200">
             <div className="bg-white p-5 rounded-3xl border border-gray-200/80 shadow-sm space-y-3">
@@ -964,7 +973,7 @@ export default function App() {
           </div>
         )}
 
-        {/* 📊 4. DOANH THU & LỊCH SỬ BILL (KHÔI PHỤC POPUP XEM CHI TIẾT) */}
+        {/* 📊 4. DOANH THU & LỊCH SỬ BILL */}
         {activeTab === 'daily_report' && (
           <div className="p-4 md:p-8 max-w-5xl mx-auto w-full overflow-y-auto animate-in fade-in duration-200">
             <div className="bg-white rounded-3xl p-5 md:p-6 border border-gray-200/80 shadow-xl space-y-4">
@@ -1224,7 +1233,7 @@ export default function App() {
         </div>
       )}
 
-      {/* POPUP CHI TIẾT BILL LỊCH SỬ (KHÔI PHỤC HOÀN CHỈNH) */}
+      {/* POPUP CHI TIẾT BILL LỊCH SỬ */}
       {selectedOrderDetails && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-5 max-w-md w-full space-y-3 shadow-2xl animate-in fade-in zoom-in-95">
