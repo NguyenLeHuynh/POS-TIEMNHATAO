@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx';
 import { 
   ShoppingCart, FileText, Printer, Plus, Minus, Trash2, 
   Search, QrCode, Package, UserCheck, Users, LogOut, Edit3, 
-  AlertTriangle, Calendar, Eye, Download, Send, X, FolderPlus, Menu, RefreshCw, Wifi
+  AlertTriangle, Calendar, Eye, Download, Send, X, FolderPlus, Menu, RefreshCw, Wifi, CheckCircle2, AlertCircle
 } from 'lucide-react';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -74,7 +74,7 @@ export default function App() {
   const [newStaffPass, setNewStaffPass] = useState('');
   const [todayOrders, setTodayOrders] = useState([]);
 
-  // Khởi tạo ứng dụng
+  // Khởi tạo ứng dụng & Tự động đồng bộ liên tục
   useEffect(() => {
     const savedUser = localStorage.getItem('pos_current_user');
     if (savedUser) setCurrentUser(JSON.parse(savedUser));
@@ -86,10 +86,14 @@ export default function App() {
     startApp();
   }, []);
 
+  // 🔄 TỰ ĐỘNG ĐỒNG BỘ MỖI 5 GIÂY NẾU ĐÃ ĐĂNG NHẬP
   useEffect(() => {
-    if (currentUser) {
+    if (!currentUser) return;
+    loadAllData();
+    const interval = setInterval(() => {
       loadAllData();
-    }
+    }, 5000);
+    return () => clearInterval(interval);
   }, [currentUser, activeTab]);
 
   useEffect(() => {
@@ -133,11 +137,10 @@ export default function App() {
     }
   };
 
-  // 🔄 ĐỒNG BỘ DỮ LIỆU TỪ CLOUD
+  // 🔄 ĐỒNG BỘ DỮ LIỆU TỪ CLOUD SUPABASE
   const loadAllData = async () => {
     setIsSyncing(true);
     try {
-      // Đọc từ Supabase trước nếu có kết nối
       if (supabase) {
         try {
           const { data: cloudStaff } = await supabase.from('staff').select('*');
@@ -170,11 +173,10 @@ export default function App() {
             await localDb.categories.bulkAdd(cloudCat);
           }
         } catch (e) {
-          console.warn('Kết nối Cloud thất bại, chuyển sang chế độ Local offline:', e);
+          console.warn('Kết nối Cloud gián đoạn:', e);
         }
       }
 
-      // Đọc hiển thị ra giao diện từ Local DB
       const catList = await localDb.categories.toArray();
       setCategories(['Tất cả', ...catList.map(c => c.name)]);
       setProducts(await localDb.products.toArray());
@@ -234,7 +236,6 @@ export default function App() {
       return;
     }
 
-    // Kiểm tra trực tiếp trên Supabase Cloud trước
     if (supabase) {
       try {
         const { data, error } = await supabase.from('staff').select('*').eq('username', loginUser).eq('password', loginPass).single();
@@ -247,7 +248,6 @@ export default function App() {
       } catch (err) {}
     }
 
-    // Nếu Cloud không có hoặc mất mạng thì kiểm tra ở máy
     const allStaff = await localDb.staff.toArray();
     const localStaff = allStaff.find(s => s.username === loginUser);
     if (localStaff && localStaff.password === loginPass) {
@@ -282,11 +282,16 @@ export default function App() {
     if (supabase) {
       try { 
         const { error } = await supabase.from('staff').insert([newStaffObj]);
-        if (error) alert(`⚠️ Lưu Ý: Chưa lưu được lên Cloud do: ${error.message}`);
-      } catch (err) {}
+        if (error) {
+          alert(`⚠️ Lỗi lưu Cloud: ${error.message}. Ní kiểm tra lại SQL Step 1 trên Supabase nha!`);
+        } else {
+          alert(`✅ Đã cấp tài khoản "${newStaffName}" thành công & đồng bộ Cloud!`);
+        }
+      } catch (err) {
+        alert('Đã lưu máy cục bộ!');
+      }
     }
 
-    alert(`Đã cấp tài khoản thành công cho nhân viên: ${newStaffName}!`);
     setNewStaffName(''); setNewStaffUser(''); setNewStaffPass('');
     loadAllData();
   };
@@ -562,7 +567,7 @@ export default function App() {
   const todayTransfer = todayOrders.reduce((sum, ord) => sum + Number(ord.transfer_amount || 0), 0);
   const todayTotal = todayCash + todayTransfer;
 
-  // 🔴 MÀN HÌNH ĐĂNG NHẬP
+  // 🔴 MÀN HÌNH ĐĂNG NHẬP (CÓ ĐÈN BÁO CLOUD TRỰC TIẾP)
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 font-sans">
@@ -571,6 +576,12 @@ export default function App() {
             <div className="w-16 h-16 bg-emerald-100 text-emerald-800 rounded-2xl flex items-center justify-center text-3xl mx-auto shadow-inner">🍵</div>
             <h1 className="text-2xl font-extrabold text-gray-900">TIỆM NHÀ TÁO POS</h1>
             <p className="text-xs text-gray-500 font-medium">Đăng nhập tài khoản Quản lý / Nhân viên</p>
+
+            {/* ĐÈN BÁO CLOUD HIỂN THỊ TRỰC TIẾP TRÊN MÀN HÌNH ĐĂNG NHẬP */}
+            <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border mt-2 ${supabase ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
+              {supabase ? <CheckCircle2 size={13} /> : <AlertCircle size={13} />}
+              <span>{supabase ? '🟢 Cloud Ready (Đã nối mạng)' : '🔴 Chưa Nối Cloud (Vercel Env)'}</span>
+            </div>
           </div>
 
           {loginError && <div className="bg-red-50 text-red-600 p-3 rounded-xl text-xs font-bold text-center border border-red-200">⚠️ {loginError}</div>}
@@ -592,11 +603,11 @@ export default function App() {
     );
   }
 
-  // 🟢 MÀN HÌNH CHÍNH
+  // 🟢 MÀN HÌNH CHÍNH POS
   return (
     <div className="flex h-screen bg-gray-100 font-sans overflow-hidden relative">
       
-      {/* 🔴 OVERLAY NỀN ĐEN KHI MỞ MENU BÊN TRÁI */}
+      {/* OVERLAY NỀN ĐEN KHI MỞ MENU */}
       {showLeftMenu && (
         <div 
           onClick={() => setShowLeftMenu(false)} 
@@ -604,7 +615,7 @@ export default function App() {
         />
       )}
 
-      {/* 🟢 THANH SIDEBAR MENU BÊN TRÁI */}
+      {/* THANH SIDEBAR MENU BÊN TRÁI */}
       <aside className={`fixed inset-y-0 left-0 w-64 bg-slate-900 text-white flex flex-col justify-between shadow-2xl z-50 transition-transform duration-300 ease-in-out ${showLeftMenu ? 'translate-x-0' : '-translate-x-full'}`}>
         <div>
           <div className="p-4 border-b border-slate-800 flex items-center justify-between">
@@ -687,15 +698,11 @@ export default function App() {
               {activeTab === 'staff_issue' && '💬 Sự Cố'}
             </h2>
 
-            {/* ĐÈN BÁO TRẠNG THÁI CLOUD SYNC */}
-            <button 
-              onClick={loadAllData} 
-              title="Bấm để đồng bộ dữ liệu Cloud mới nhất"
-              className={`px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 border ${supabase ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-600 border-red-200'}`}
-            >
-              <RefreshCw size={12} className={isSyncing ? 'animate-spin' : ''} />
+            {/* ĐÈN BÁO TRẠNG THÁI CLOUD CÙNG NÚT XOAY TỰ ĐỘNG */}
+            <div className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 border ${supabase ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
+              <RefreshCw size={11} className={isSyncing ? 'animate-spin' : ''} />
               <span>{supabase ? 'Cloud Ready' : 'Chưa Nối Cloud'}</span>
-            </button>
+            </div>
           </div>
 
           {activeTab === 'pos' && (
