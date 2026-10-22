@@ -12,7 +12,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",
     "@tailwindcss/postcss": "^4.3.3",
-    "@vitejs/plugin-react": "^6.1.2",
+    "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.6.1",
     "dexie": "^4.4.6",
     "lucide-react": "^1.61.0",
@@ -20,7 +20,7 @@
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "tailwindcss": "^4.3.3",
-    "vite": "^8.3.5",
+    "vite": "^5.4.11",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
