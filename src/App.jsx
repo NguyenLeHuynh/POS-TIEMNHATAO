@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx';
 import { 
   ShoppingCart, FileText, Printer, Plus, Minus, Trash2, 
   Search, QrCode, Package, UserCheck, Users, LogOut, Edit3, 
-  AlertTriangle, Calendar, Eye, Download, Send, X, FolderPlus, Menu, RefreshCw, CheckCircle2, AlertCircle
+  AlertTriangle, Calendar, Eye, Download, Send, X, FolderPlus, Menu, RefreshCw, CheckCircle2, AlertCircle, UploadCloud
 } from 'lucide-react';
 
 // 🔴 DÁN TRỰC TIẾP URL VÀ ANON KEY CỦA SUPABASE VÀO 2 DÒNG NÀY:
@@ -80,7 +80,7 @@ export default function App() {
   const [newStaffPass, setNewStaffPass] = useState('');
   const [todayOrders, setTodayOrders] = useState([]);
 
-  // Khởi tạo ứng dụng & Kiểm tra kết nối Cloud
+  // Khởi tạo ứng dụng
   useEffect(() => {
     const savedUser = localStorage.getItem('pos_current_user');
     if (savedUser) setCurrentUser(JSON.parse(savedUser));
@@ -93,13 +93,13 @@ export default function App() {
     startApp();
   }, []);
 
-  // 🔄 TỰ ĐỘNG ĐỒNG BỘ CỨ MỖI 3 GIÂY
+  // 🔄 TỰ ĐỘNG LÀM MỚI DỮ LIỆU CỨ MỖI 4 GIÂY
   useEffect(() => {
     if (!currentUser) return;
     loadAllData();
     const interval = setInterval(() => {
       loadAllData();
-    }, 3000);
+    }, 4000);
     return () => clearInterval(interval);
   }, [currentUser, activeTab]);
 
@@ -117,13 +117,14 @@ export default function App() {
       if (error) {
         setCloudStatusMsg(`⚠️ Lỗi Bảng Cloud: ${error.message}`);
       } else {
-        setCloudStatusMsg('🟢 Cloud Ready (Kết nối thành công!)');
+        setCloudStatusMsg('🟢 Cloud Ready (Đã kết nối!)');
       }
     } catch (e) {
-      setCloudStatusMsg('🔴 Lỗi kết nối mạng Cloud!');
+      setCloudStatusMsg('🔴 Lỗi mạng Cloud!');
     }
   };
 
+  // 🟢 KHÔI PHỤC DỮ LIỆU MẪU ĐẢM BẢO KHÔNG BAO GIỜ BỊ TRẮNG MÀN HÌNH
   const initData = async () => {
     try {
       const existingCat = await localDb.categories.toArray();
@@ -135,12 +136,33 @@ export default function App() {
           { name: 'Bánh Sweet' }
         ]);
       }
+
+      const existingProducts = await localDb.products.toArray();
+      if (existingProducts.length === 0) {
+        await localDb.products.bulkPut([
+          { id: '1', name: 'Matcha Latte Premium', price: 45000, category: 'Matcha Series', image: '🍵', stock: 45, is_available: true },
+          { id: '2', name: 'Matcha Coco Espresso', price: 52000, category: 'Matcha Series', image: '🥥', stock: 28, is_available: true },
+          { id: '3', name: 'Matcha Foam Kem Trứng', price: 49000, category: 'Matcha Series', image: '🍦', stock: 15, is_available: true },
+          { id: '4', name: 'Cà Phê Sữa Đá Măng Đen', price: 29000, category: 'Cà Phê Măng Đen', image: '☕', stock: 99, is_available: true },
+          { id: '5', name: 'Bạc Xỉu Sữa Hạnh Nhân', price: 35000, category: 'Cà Phê Măng Đen', image: '🥤', stock: 60, is_available: true },
+          { id: '6', name: 'Trà Ô Long Sữa Nướng', price: 39000, category: 'Trà & Latte', image: '🧋', stock: 35, is_available: true }
+        ]);
+      }
+
+      const existingInv = await localDb.inventory.toArray();
+      if (existingInv.length === 0) {
+        await localDb.inventory.bulkPut([
+          { name: 'Bột Matcha Uji Grade A', quantity: 12.5, unit: 'kg', min_quantity: 3 },
+          { name: 'Hạt Cà Phê Măng Đen', quantity: 25, unit: 'kg', min_quantity: 5 },
+          { name: 'Sữa Tươi Thanh Trùng', quantity: 40, unit: 'hộp', min_quantity: 10 }
+        ]);
+      }
     } catch (err) {
       console.error('Lỗi DB local:', err);
     }
   };
 
-  // 🔄 ĐỒNG BỘ DỮ LIỆU TỪ CLOUD SUPABASE
+  // 🔄 ĐỒNG BỘ DỮ LIỆU TỪ CLOUD SUPABASE VỀ MÁY
   const loadAllData = async () => {
     setIsSyncing(true);
     try {
@@ -193,6 +215,35 @@ export default function App() {
     }
   };
 
+  // 📤 NÚT ÉP ĐẨY DỮ LIỆU TỪ MÁY LÊN CLOUD (CHỈ CẦN BẤM 1 LẦN DÀNH CHO CHỦ QUÁN)
+  const pushLocalToCloud = async () => {
+    if (!supabase) return alert('Chưa kết nối được Supabase!');
+    setIsSyncing(true);
+    try {
+      const localCats = await localDb.categories.toArray();
+      for (const c of localCats) {
+        await supabase.from('categories').upsert([{ name: c.name }]);
+      }
+
+      const localProds = await localDb.products.toArray();
+      for (const p of localProds) {
+        await supabase.from('products').upsert([{ name: p.name, price: p.price, category: p.category, image: p.image, stock: p.stock, is_available: true }]);
+      }
+
+      const localInvs = await localDb.inventory.toArray();
+      for (const i of localInvs) {
+        await supabase.from('inventory').upsert([{ name: i.name, quantity: i.quantity, unit: i.unit, min_quantity: i.min_quantity }]);
+      }
+
+      alert('✅ Đã đẩy toàn bộ Menu và Dữ liệu từ Máy tính lên Cloud thành công! Điện thoại giờ đã thấy 100% rồi nha ní!');
+      await loadAllData();
+    } catch (err) {
+      alert(`⚠️ Lỗi đẩy dữ liệu: ${err.message}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   // 📂 QUẢN LÝ DANH MỤC MÓN
   const handleAddCategory = async (e) => {
     e.preventDefault();
@@ -200,9 +251,9 @@ export default function App() {
     if (!name) return;
     if (categories.includes(name)) return alert('Danh mục này đã tồn tại!');
 
-    const newCat = { name };
+    await localDb.categories.add({ name });
     if (supabase) {
-      try { await supabase.from('categories').insert([newCat]); } catch (err) {}
+      try { await supabase.from('categories').insert([{ name }]); } catch (err) {}
     }
     setNewCatName('');
     loadAllData();
@@ -211,6 +262,10 @@ export default function App() {
   const handleDeleteCategory = async (catName) => {
     if (catName === 'Tất cả') return alert('Không thể xóa danh mục này!');
     if (!window.confirm(`Bạn có chắc muốn xóa danh mục "${catName}"?`)) return;
+
+    const allCats = await localDb.categories.toArray();
+    const catObj = allCats.find(c => c.name === catName);
+    if (catObj) await localDb.categories.delete(catObj.id);
 
     if (supabase) {
       try { await supabase.from('categories').delete().eq('name', catName); } catch (err) {}
@@ -261,52 +316,54 @@ export default function App() {
     setCart([]);
   };
 
-  // 🟢 CẤP TÀI KHOẢN NHÂN VIÊN (ĐÃ SỬA LỖI ĐỘNG BỘ CLOUD)
+  // 🟢 CẤP TÀI KHOẢN NHÂN VIÊN (LƯU KÉP LOCAL + CLOUD)
   const handleCreateStaff = async (e) => {
     e.preventDefault();
     if (!newStaffName || !newStaffUser || !newStaffPass) return alert('Vui lòng nhập đủ thông tin!');
 
-    // KHÔNG TRUYỀN ID CỤC BỘ ĐỂ SUPABASE TỰ SINH UUID CHUẨN
-    const staffPayload = {
+    const staffData = {
       full_name: newStaffName,
       username: newStaffUser.trim(),
       password: newStaffPass.trim(),
       role: 'STAFF'
     };
 
+    // 1. Lưu vào máy trước
+    await localDb.staff.add(staffData);
+
+    // 2. Đẩy lên Supabase (Không truyền ID để Supabase tự sinh UUID)
     if (supabase) {
       try { 
-        const { error } = await supabase.from('staff').insert([staffPayload]);
+        const { error } = await supabase.from('staff').insert([staffData]);
         if (error) {
-          alert(`⚠️ Lỗi Cloud Supabase: ${error.message}`);
-          return;
+          alert(`⚠️ Đã lưu vào Máy tính nhưng lỗi Cloud: ${error.message}`);
         } else {
-          alert(`✅ Đã tạo thành công tài khoản "${newStaffName}" lên Cloud!`);
+          alert(`✅ Đã cấp thành công tài khoản "${newStaffName}" lên Cloud!`);
         }
-      } catch (err) {
-        alert(`Lỗi kết nối: ${err.message}`);
-      }
+      } catch (err) {}
     }
 
     setNewStaffName(''); setNewStaffUser(''); setNewStaffPass('');
-    await loadAllData();
+    loadAllData();
   };
 
   const handleDeleteStaff = async (id) => {
     if (!window.confirm('Bạn có chắc muốn xóa nhân viên này?')) return;
     const staffObj = await localDb.staff.get(id);
+    await localDb.staff.delete(id);
     if (staffObj && supabase) {
       try { await supabase.from('staff').delete().eq('username', staffObj.username); } catch (err) {}
     }
     loadAllData();
   };
 
-  // Món Nước CRUD
+  // Món Nước CRUD (LƯU KÉP LOCAL + CLOUD)
   const handleSaveProduct = async (e) => {
     e.preventDefault();
     if (!editingProduct.name || !editingProduct.price) return;
 
-    const productPayload = {
+    const prodObj = {
+      id: editingProduct.id || Date.now().toString(),
       name: editingProduct.name,
       price: Number(editingProduct.price),
       category: editingProduct.category,
@@ -315,14 +372,21 @@ export default function App() {
       is_available: true
     };
 
-    if (editingProduct.id) {
-      if (supabase) {
-        try { await supabase.from('products').upsert([{ id: editingProduct.id, ...productPayload }]); } catch (err) {}
-      }
-    } else {
-      if (supabase) {
-        try { await supabase.from('products').insert([productPayload]); } catch (err) {}
-      }
+    // 1. Lưu dưới máy trước
+    await localDb.products.put(prodObj);
+
+    // 2. Đẩy lên Cloud
+    if (supabase) {
+      try { 
+        await supabase.from('products').insert([{
+          name: prodObj.name,
+          price: prodObj.price,
+          category: prodObj.category,
+          image: prodObj.image,
+          stock: prodObj.stock,
+          is_available: true
+        }]); 
+      } catch (err) {}
     }
 
     setShowProductModal(false);
@@ -332,6 +396,7 @@ export default function App() {
 
   const handleDeleteProduct = async (id) => {
     if (!window.confirm('Bạn có chắc muốn xóa món nước này khỏi menu?')) return;
+    await localDb.products.delete(id);
     if (supabase) {
       try { await supabase.from('products').delete().eq('id', id); } catch (err) {}
     }
@@ -342,15 +407,11 @@ export default function App() {
   const handleAddInventory = async (e) => {
     e.preventDefault();
     if (!newInvItem.name) return;
-    const itemPayload = { 
-      name: newInvItem.name, 
-      quantity: Number(newInvItem.quantity), 
-      unit: newInvItem.unit, 
-      min_quantity: Number(newInvItem.min_quantity) 
-    };
-
+    const item = { name: newInvItem.name, quantity: Number(newInvItem.quantity), unit: newInvItem.unit, min_quantity: Number(newInvItem.min_quantity) };
+    
+    await localDb.inventory.add(item);
     if (supabase) {
-      try { await supabase.from('inventory').insert([itemPayload]); } catch (err) {}
+      try { await supabase.from('inventory').insert([item]); } catch (err) {}
     }
     setNewInvItem({ name: '', quantity: 10, unit: 'kg', min_quantity: 3 });
     setShowInvModal(false);
@@ -361,6 +422,7 @@ export default function App() {
     const item = await localDb.inventory.get(id);
     if (item) {
       const newQty = Math.max(0, Number(item.quantity) + delta);
+      await localDb.inventory.update(id, { quantity: newQty });
       if (supabase) {
         try { await supabase.from('inventory').update({ quantity: newQty }).eq('id', id); } catch (err) {}
       }
@@ -445,15 +507,16 @@ export default function App() {
   const handleSubmitIssue = async (e) => {
     e.preventDefault();
     if (!newIssueTitle || !newIssueContent) return;
-    const reportPayload = {
+    const report = {
       staff_name: currentUser.full_name,
       title: newIssueTitle,
       content: newIssueContent,
       status: 'PENDING',
       created_at: new Date().toISOString()
     };
+    await localDb.issue_reports.add(report);
     if (supabase) {
-      try { await supabase.from('issue_reports').insert([reportPayload]); } catch (err) {}
+      try { await supabase.from('issue_reports').insert([report]); } catch (err) {}
     }
     setNewIssueTitle(''); setNewIssueContent('');
     alert('Đã gửi báo cáo lên Chủ Quán!');
@@ -461,6 +524,7 @@ export default function App() {
   };
 
   const resolveIssue = async (id) => {
+    await localDb.issue_reports.update(id, { status: 'RESOLVED' });
     if (supabase) {
       try { await supabase.from('issue_reports').update({ status: 'RESOLVED' }).eq('id', id); } catch (err) {}
     }
@@ -516,7 +580,7 @@ export default function App() {
     }
 
     const orderCode = `HD${Date.now().toString().slice(-6)}`;
-    const orderPayload = {
+    const orderData = {
       code: orderCode,
       created_at: new Date().toISOString(),
       total_amount: finalTotal,
@@ -529,14 +593,29 @@ export default function App() {
       items_json: JSON.stringify(cart)
     };
 
+    await localDb.orders.add(orderData);
     if (supabase) {
-      try { await supabase.from('orders').insert([orderPayload]); } catch (err) {}
+      try { 
+        await supabase.from('orders').insert([{
+          code: orderData.code,
+          created_at: orderData.created_at,
+          total_amount: orderData.total_amount,
+          sub_total: orderData.sub_total,
+          discount_amount: orderData.discount_amount,
+          cash_amount: orderData.cash_amount,
+          transfer_amount: orderData.transfer_amount,
+          payment_method: orderData.payment_method,
+          staff_name: orderData.staff_name,
+          items_json: orderData.items_json
+        }]); 
+      } catch (err) {}
     }
 
     for (const cartItem of cart) {
       const p = await localDb.products.get(cartItem.id);
       if (p) {
         const updatedStock = Math.max(0, (p.stock || 0) - cartItem.qty);
+        await localDb.products.update(cartItem.id, { stock: updatedStock, is_available: updatedStock > 0 });
         if (supabase) {
           try { await supabase.from('products').update({ stock: updatedStock, is_available: updatedStock > 0 }).eq('id', cartItem.id); } catch (err) {}
         }
@@ -693,6 +772,18 @@ export default function App() {
               {activeTab === 'staff_mgr' && '👥 Nhân Viên'}
               {activeTab === 'staff_issue' && '💬 Sự Cố'}
             </h2>
+
+            {/* NÚT ÉP ĐẨY DỮ LIỆU CỦA CHỦ QUÁN */}
+            {currentUser.role === 'OWNER' && (
+              <button 
+                onClick={pushLocalToCloud}
+                title="Bấm nút này để đẩy toàn bộ Menu từ Máy tính lên Điện thoại"
+                className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-1 shadow transition-all active:scale-95"
+              >
+                <UploadCloud size={13} />
+                <span className="hidden sm:inline">Đẩy Dữ Liệu Lên Cloud</span>
+              </button>
+            )}
 
             <div className="px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 border bg-emerald-50 text-emerald-700 border-emerald-200">
               <RefreshCw size={11} className={isSyncing ? 'animate-spin' : ''} />
