@@ -8,8 +8,9 @@ import {
   AlertTriangle, Calendar, Eye, Download, Send, X, FolderPlus, Menu, RefreshCw, CheckCircle2, AlertCircle
 } from 'lucide-react';
 
-const DIRECT_SUPABASE_URL = 'https://wnkybaylqkiimzrjmawv.supabase.co';
-const DIRECT_SUPABASE_KEY = 'sb_publishable_VMesRURnTkJ-VYQCMBpmDw_6ZO-Gl2c';
+// 🔴 DÁN TRỰC TIẾP URL VÀ ANON KEY CỦA SUPABASE VÀO 2 DÒNG NÀY:
+const DIRECT_SUPABASE_URL = 'DÁN_SUPABASE_URL_CỦA_NÍ_VÀO_ĐÂY';
+const DIRECT_SUPABASE_KEY = 'DÁN_SUPABASE_ANON_KEY_CỦA_NÍ_VÀO_ĐÂY';
 
 const supabaseUrl = (DIRECT_SUPABASE_URL && !DIRECT_SUPABASE_URL.includes('DÁN_')) ? DIRECT_SUPABASE_URL : import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = (DIRECT_SUPABASE_KEY && !DIRECT_SUPABASE_KEY.includes('DÁN_')) ? DIRECT_SUPABASE_KEY : import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -92,7 +93,7 @@ export default function App() {
     startApp();
   }, []);
 
-  // 🔄 TỰ ĐỘNG LÀM MỚI DỮ LIỆU CỨ MỖI 3 GIÂY
+  // 🔄 TỰ ĐỘNG ĐỒNG BỘ CỨ MỖI 3 GIÂY
   useEffect(() => {
     if (!currentUser) return;
     loadAllData();
@@ -127,32 +128,11 @@ export default function App() {
     try {
       const existingCat = await localDb.categories.toArray();
       if (existingCat.length === 0) {
-        await localDb.categories.bulkAdd([
+        await localDb.categories.bulkPut([
           { name: 'Matcha Series' },
           { name: 'Cà Phê Măng Đen' },
           { name: 'Trà & Latte' },
           { name: 'Bánh Sweet' }
-        ]);
-      }
-
-      const existingProducts = await localDb.products.toArray();
-      if (existingProducts.length === 0) {
-        await localDb.products.bulkAdd([
-          { id: '1', name: 'Matcha Latte Premium', price: 45000, category: 'Matcha Series', image: '🍵', stock: 45, is_available: true },
-          { id: '2', name: 'Matcha Coco Espresso', price: 52000, category: 'Matcha Series', image: '🥥', stock: 28, is_available: true },
-          { id: '3', name: 'Matcha Foam Kem Trứng', price: 49000, category: 'Matcha Series', image: '🍦', stock: 15, is_available: true },
-          { id: '4', name: 'Cà Phê Sữa Đá Măng Đen', price: 29000, category: 'Cà Phê Măng Đen', image: '☕', stock: 99, is_available: true },
-          { id: '5', name: 'Bạc Xỉu Sữa Hạnh Nhân', price: 35000, category: 'Cà Phê Măng Đen', image: '🥤', stock: 60, is_available: true },
-          { id: '6', name: 'Trà Ô Long Sữa Nướng', price: 39000, category: 'Trà & Latte', image: '🧋', stock: 35, is_available: true }
-        ]);
-      }
-
-      const existingInv = await localDb.inventory.toArray();
-      if (existingInv.length === 0) {
-        await localDb.inventory.bulkAdd([
-          { name: 'Bột Matcha Uji Grade A', quantity: 12.5, unit: 'kg', min_quantity: 3 },
-          { name: 'Hạt Cà Phê Măng Đen', quantity: 25, unit: 'kg', min_quantity: 5 },
-          { name: 'Sữa Tươi Thanh Trùng', quantity: 40, unit: 'hộp', min_quantity: 10 }
         ]);
       }
     } catch (err) {
@@ -169,31 +149,31 @@ export default function App() {
           const { data: cloudStaff } = await supabase.from('staff').select('*');
           if (cloudStaff && cloudStaff.length > 0) {
             await localDb.staff.clear();
-            await localDb.staff.bulkAdd(cloudStaff);
+            await localDb.staff.bulkPut(cloudStaff);
           }
 
           const { data: cloudProducts } = await supabase.from('products').select('*');
           if (cloudProducts && cloudProducts.length > 0) {
             await localDb.products.clear();
-            await localDb.products.bulkAdd(cloudProducts);
+            await localDb.products.bulkPut(cloudProducts);
           }
 
           const { data: cloudOrders } = await supabase.from('orders').select('*');
           if (cloudOrders && cloudOrders.length > 0) {
             await localDb.orders.clear();
-            await localDb.orders.bulkAdd(cloudOrders);
+            await localDb.orders.bulkPut(cloudOrders);
           }
 
           const { data: cloudInv } = await supabase.from('inventory').select('*');
           if (cloudInv && cloudInv.length > 0) {
             await localDb.inventory.clear();
-            await localDb.inventory.bulkAdd(cloudInv);
+            await localDb.inventory.bulkPut(cloudInv);
           }
 
           const { data: cloudCat } = await supabase.from('categories').select('*');
           if (cloudCat && cloudCat.length > 0) {
             await localDb.categories.clear();
-            await localDb.categories.bulkAdd(cloudCat);
+            await localDb.categories.bulkPut(cloudCat);
           }
         } catch (e) {}
       }
@@ -221,7 +201,6 @@ export default function App() {
     if (categories.includes(name)) return alert('Danh mục này đã tồn tại!');
 
     const newCat = { name };
-    await localDb.categories.add(newCat);
     if (supabase) {
       try { await supabase.from('categories').insert([newCat]); } catch (err) {}
     }
@@ -233,16 +212,11 @@ export default function App() {
     if (catName === 'Tất cả') return alert('Không thể xóa danh mục này!');
     if (!window.confirm(`Bạn có chắc muốn xóa danh mục "${catName}"?`)) return;
 
-    const allCats = await localDb.categories.toArray();
-    const catObj = allCats.find(c => c.name === catName);
-    if (catObj) {
-      await localDb.categories.delete(catObj.id);
-      if (supabase) {
-        try { await supabase.from('categories').delete().eq('name', catName); } catch (err) {}
-      }
-      if (selectedCategory === catName) setSelectedCategory('Tất cả');
-      loadAllData();
+    if (supabase) {
+      try { await supabase.from('categories').delete().eq('name', catName); } catch (err) {}
     }
+    if (selectedCategory === catName) setSelectedCategory('Tất cả');
+    loadAllData();
   };
 
   // 🟢 ĐĂNG NHẬP
@@ -287,38 +261,40 @@ export default function App() {
     setCart([]);
   };
 
-  // Cấp Tài Khoản Nhân Viên
+  // 🟢 CẤP TÀI KHOẢN NHÂN VIÊN (ĐÃ SỬA LỖI ĐỘNG BỘ CLOUD)
   const handleCreateStaff = async (e) => {
     e.preventDefault();
     if (!newStaffName || !newStaffUser || !newStaffPass) return alert('Vui lòng nhập đủ thông tin!');
 
-    const newStaffObj = {
+    // KHÔNG TRUYỀN ID CỤC BỘ ĐỂ SUPABASE TỰ SINH UUID CHUẨN
+    const staffPayload = {
       full_name: newStaffName,
       username: newStaffUser.trim(),
       password: newStaffPass.trim(),
       role: 'STAFF'
     };
 
-    await localDb.staff.add(newStaffObj);
     if (supabase) {
       try { 
-        const { error } = await supabase.from('staff').insert([newStaffObj]);
+        const { error } = await supabase.from('staff').insert([staffPayload]);
         if (error) {
-          alert(`⚠️ Lỗi Cloud: ${error.message}`);
+          alert(`⚠️ Lỗi Cloud Supabase: ${error.message}`);
+          return;
         } else {
-          alert(`✅ Đã cấp tài khoản "${newStaffName}" thành công lên Cloud!`);
+          alert(`✅ Đã tạo thành công tài khoản "${newStaffName}" lên Cloud!`);
         }
-      } catch (err) {}
+      } catch (err) {
+        alert(`Lỗi kết nối: ${err.message}`);
+      }
     }
 
     setNewStaffName(''); setNewStaffUser(''); setNewStaffPass('');
-    loadAllData();
+    await loadAllData();
   };
 
   const handleDeleteStaff = async (id) => {
     if (!window.confirm('Bạn có chắc muốn xóa nhân viên này?')) return;
     const staffObj = await localDb.staff.get(id);
-    await localDb.staff.delete(id);
     if (staffObj && supabase) {
       try { await supabase.from('staff').delete().eq('username', staffObj.username); } catch (err) {}
     }
@@ -330,16 +306,22 @@ export default function App() {
     e.preventDefault();
     if (!editingProduct.name || !editingProduct.price) return;
 
+    const productPayload = {
+      name: editingProduct.name,
+      price: Number(editingProduct.price),
+      category: editingProduct.category,
+      image: editingProduct.image,
+      stock: Number(editingProduct.stock) || 50,
+      is_available: true
+    };
+
     if (editingProduct.id) {
-      await localDb.products.put(editingProduct);
       if (supabase) {
-        try { await supabase.from('products').upsert([editingProduct]); } catch (err) {}
+        try { await supabase.from('products').upsert([{ id: editingProduct.id, ...productPayload }]); } catch (err) {}
       }
     } else {
-      const newP = { ...editingProduct, id: Date.now().toString(), stock: Number(editingProduct.stock) || 50, is_available: true };
-      await localDb.products.add(newP);
       if (supabase) {
-        try { await supabase.from('products').insert([newP]); } catch (err) {}
+        try { await supabase.from('products').insert([productPayload]); } catch (err) {}
       }
     }
 
@@ -350,7 +332,6 @@ export default function App() {
 
   const handleDeleteProduct = async (id) => {
     if (!window.confirm('Bạn có chắc muốn xóa món nước này khỏi menu?')) return;
-    await localDb.products.delete(id);
     if (supabase) {
       try { await supabase.from('products').delete().eq('id', id); } catch (err) {}
     }
@@ -361,10 +342,15 @@ export default function App() {
   const handleAddInventory = async (e) => {
     e.preventDefault();
     if (!newInvItem.name) return;
-    const item = { ...newInvItem, quantity: Number(newInvItem.quantity), min_quantity: Number(newInvItem.min_quantity) };
-    await localDb.inventory.add(item);
+    const itemPayload = { 
+      name: newInvItem.name, 
+      quantity: Number(newInvItem.quantity), 
+      unit: newInvItem.unit, 
+      min_quantity: Number(newInvItem.min_quantity) 
+    };
+
     if (supabase) {
-      try { await supabase.from('inventory').insert([item]); } catch (err) {}
+      try { await supabase.from('inventory').insert([itemPayload]); } catch (err) {}
     }
     setNewInvItem({ name: '', quantity: 10, unit: 'kg', min_quantity: 3 });
     setShowInvModal(false);
@@ -375,7 +361,6 @@ export default function App() {
     const item = await localDb.inventory.get(id);
     if (item) {
       const newQty = Math.max(0, Number(item.quantity) + delta);
-      await localDb.inventory.update(id, { quantity: newQty });
       if (supabase) {
         try { await supabase.from('inventory').update({ quantity: newQty }).eq('id', id); } catch (err) {}
       }
@@ -460,16 +445,15 @@ export default function App() {
   const handleSubmitIssue = async (e) => {
     e.preventDefault();
     if (!newIssueTitle || !newIssueContent) return;
-    const report = {
+    const reportPayload = {
       staff_name: currentUser.full_name,
       title: newIssueTitle,
       content: newIssueContent,
       status: 'PENDING',
       created_at: new Date().toISOString()
     };
-    await localDb.issue_reports.add(report);
     if (supabase) {
-      try { await supabase.from('issue_reports').insert([report]); } catch (err) {}
+      try { await supabase.from('issue_reports').insert([reportPayload]); } catch (err) {}
     }
     setNewIssueTitle(''); setNewIssueContent('');
     alert('Đã gửi báo cáo lên Chủ Quán!');
@@ -477,7 +461,6 @@ export default function App() {
   };
 
   const resolveIssue = async (id) => {
-    await localDb.issue_reports.update(id, { status: 'RESOLVED' });
     if (supabase) {
       try { await supabase.from('issue_reports').update({ status: 'RESOLVED' }).eq('id', id); } catch (err) {}
     }
@@ -533,7 +516,7 @@ export default function App() {
     }
 
     const orderCode = `HD${Date.now().toString().slice(-6)}`;
-    const orderData = {
+    const orderPayload = {
       code: orderCode,
       created_at: new Date().toISOString(),
       total_amount: finalTotal,
@@ -546,19 +529,14 @@ export default function App() {
       items_json: JSON.stringify(cart)
     };
 
-    await localDb.orders.add(orderData);
     if (supabase) {
-      try { await supabase.from('orders').insert([orderData]); } catch (err) {}
+      try { await supabase.from('orders').insert([orderPayload]); } catch (err) {}
     }
 
     for (const cartItem of cart) {
       const p = await localDb.products.get(cartItem.id);
       if (p) {
         const updatedStock = Math.max(0, (p.stock || 0) - cartItem.qty);
-        await localDb.products.update(cartItem.id, {
-          stock: updatedStock,
-          is_available: updatedStock > 0
-        });
         if (supabase) {
           try { await supabase.from('products').update({ stock: updatedStock, is_available: updatedStock > 0 }).eq('id', cartItem.id); } catch (err) {}
         }
@@ -596,7 +574,6 @@ export default function App() {
             <h1 className="text-2xl font-extrabold text-gray-900">TIỆM NHÀ TÁO POS</h1>
             <p className="text-xs text-gray-500 font-medium">Đăng nhập tài khoản Quản lý / Nhân viên</p>
 
-            {/* ĐÈN BÁO TRẠNG THÁI CLOUD CHI TIẾT */}
             <div className="pt-1">
               <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border ${cloudStatusMsg.includes('🟢') ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
                 <span>{cloudStatusMsg || 'Đang kiểm tra kết nối Cloud...'}</span>
@@ -717,7 +694,6 @@ export default function App() {
               {activeTab === 'staff_issue' && '💬 Sự Cố'}
             </h2>
 
-            {/* NÚT TỰ ĐỘNG XOAY ĐỒNG BỘ */}
             <div className="px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 border bg-emerald-50 text-emerald-700 border-emerald-200">
               <RefreshCw size={11} className={isSyncing ? 'animate-spin' : ''} />
               <span className="hidden sm:inline">Auto-Sync</span>
@@ -1364,7 +1340,7 @@ export default function App() {
         </div>
       )}
 
-      {/* 🖨️ KHU VỰC IN BILL (CHỈ HIỆN KHI BẤM IN) */}
+      {/* 🖨️ KHU VỰC IN BILL */}
       <div id="print-area" className="hidden print:block p-2 text-[11px] font-mono leading-tight">
         <div className="text-center font-extrabold text-sm uppercase">TIỆM NHÀ TÁO POS</div>
         <div className="text-center text-[10px]">Cửa Hàng Matcha & Cà Phê</div>
