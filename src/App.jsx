@@ -5,11 +5,15 @@ import * as XLSX from 'xlsx';
 import { 
   ShoppingCart, FileText, Printer, Plus, Minus, Trash2, 
   Search, QrCode, Package, UserCheck, Users, LogOut, Edit3, 
-  AlertTriangle, Calendar, Eye, Download, Send, X, FolderPlus, Menu, RefreshCw, Wifi, CheckCircle2, AlertCircle
+  AlertTriangle, Calendar, Eye, Download, Send, X, FolderPlus, Menu, RefreshCw, CheckCircle2, AlertCircle
 } from 'lucide-react';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const DIRECT_SUPABASE_URL = 'https://wnkybaylqkiimzrjmawv.supabase.co';
+const DIRECT_SUPABASE_KEY = 'sb_publishable_VMesRURnTkJ-VYQCMBpmDw_6ZO-Gl2c';
+
+const supabaseUrl = (DIRECT_SUPABASE_URL && !DIRECT_SUPABASE_URL.includes('DÁN_')) ? DIRECT_SUPABASE_URL : import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = (DIRECT_SUPABASE_KEY && !DIRECT_SUPABASE_KEY.includes('DÁN_')) ? DIRECT_SUPABASE_KEY : import.meta.env.VITE_SUPABASE_ANON_KEY;
+
 const supabase = (supabaseUrl && supabaseAnonKey) ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
 // THÔNG TIN TÀI KHOẢN MBBANK CỦA CHỦ QUÁN
@@ -25,6 +29,7 @@ export default function App() {
   const [loginUser, setLoginUser] = useState('');
   const [loginPass, setLoginPass] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [cloudStatusMsg, setCloudStatusMsg] = useState('');
 
   // 🟢 TRẠNG THÁI GIAO DIỆN
   const [activeTab, setActiveTab] = useState('pos');
@@ -74,31 +79,49 @@ export default function App() {
   const [newStaffPass, setNewStaffPass] = useState('');
   const [todayOrders, setTodayOrders] = useState([]);
 
-  // Khởi tạo ứng dụng & Tự động đồng bộ liên tục
+  // Khởi tạo ứng dụng & Kiểm tra kết nối Cloud
   useEffect(() => {
     const savedUser = localStorage.getItem('pos_current_user');
     if (savedUser) setCurrentUser(JSON.parse(savedUser));
     
     const startApp = async () => {
       await initData();
+      await testCloudConnection();
       await loadAllData();
     };
     startApp();
   }, []);
 
-  // 🔄 TỰ ĐỘNG ĐỒNG BỘ MỖI 5 GIÂY NẾU ĐÃ ĐĂNG NHẬP
+  // 🔄 TỰ ĐỘNG LÀM MỚI DỮ LIỆU CỨ MỖI 3 GIÂY
   useEffect(() => {
     if (!currentUser) return;
     loadAllData();
     const interval = setInterval(() => {
       loadAllData();
-    }, 5000);
+    }, 3000);
     return () => clearInterval(interval);
   }, [currentUser, activeTab]);
 
   useEffect(() => {
     generateTaxPreview();
   }, [taxStartDate, taxEndDate]);
+
+  const testCloudConnection = async () => {
+    if (!supabase) {
+      setCloudStatusMsg('🔴 Chưa điền Key Supabase ở dòng 13, 14!');
+      return;
+    }
+    try {
+      const { data, error } = await supabase.from('staff').select('id').limit(1);
+      if (error) {
+        setCloudStatusMsg(`⚠️ Lỗi Bảng Cloud: ${error.message}`);
+      } else {
+        setCloudStatusMsg('🟢 Cloud Ready (Kết nối thành công!)');
+      }
+    } catch (e) {
+      setCloudStatusMsg('🔴 Lỗi kết nối mạng Cloud!');
+    }
+  };
 
   const initData = async () => {
     try {
@@ -133,7 +156,7 @@ export default function App() {
         ]);
       }
     } catch (err) {
-      console.error('Lỗi khởi tạo DB cục bộ:', err);
+      console.error('Lỗi DB local:', err);
     }
   };
 
@@ -172,9 +195,7 @@ export default function App() {
             await localDb.categories.clear();
             await localDb.categories.bulkAdd(cloudCat);
           }
-        } catch (e) {
-          console.warn('Kết nối Cloud gián đoạn:', e);
-        }
+        } catch (e) {}
       }
 
       const catList = await localDb.categories.toArray();
@@ -186,7 +207,7 @@ export default function App() {
       setIssueReports(issueList.reverse());
       fetchTodayOrders();
     } catch (err) {
-      console.error('Lỗi tải dữ liệu:', err);
+      console.error('Lỗi nạp dữ liệu:', err);
     } finally {
       setIsSyncing(false);
     }
@@ -224,7 +245,7 @@ export default function App() {
     }
   };
 
-  // 🟢 ĐĂNG NHẬP (TRỰC TIẾP TRÊN CLOUD XONG ĐẾN LOCAL)
+  // 🟢 ĐĂNG NHẬP
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoginError('');
@@ -283,13 +304,11 @@ export default function App() {
       try { 
         const { error } = await supabase.from('staff').insert([newStaffObj]);
         if (error) {
-          alert(`⚠️ Lỗi lưu Cloud: ${error.message}. Ní kiểm tra lại SQL Step 1 trên Supabase nha!`);
+          alert(`⚠️ Lỗi Cloud: ${error.message}`);
         } else {
-          alert(`✅ Đã cấp tài khoản "${newStaffName}" thành công & đồng bộ Cloud!`);
+          alert(`✅ Đã cấp tài khoản "${newStaffName}" thành công lên Cloud!`);
         }
-      } catch (err) {
-        alert('Đã lưu máy cục bộ!');
-      }
+      } catch (err) {}
     }
 
     setNewStaffName(''); setNewStaffUser(''); setNewStaffPass('');
@@ -567,20 +586,21 @@ export default function App() {
   const todayTransfer = todayOrders.reduce((sum, ord) => sum + Number(ord.transfer_amount || 0), 0);
   const todayTotal = todayCash + todayTransfer;
 
-  // 🔴 MÀN HÌNH ĐĂNG NHẬP (CÓ ĐÈN BÁO CLOUD TRỰC TIẾP)
+  // 🔴 MÀN HÌNH ĐĂNG NHẬP
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 font-sans">
-        <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl space-y-6">
+        <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl space-y-5">
           <div className="text-center space-y-2">
             <div className="w-16 h-16 bg-emerald-100 text-emerald-800 rounded-2xl flex items-center justify-center text-3xl mx-auto shadow-inner">🍵</div>
             <h1 className="text-2xl font-extrabold text-gray-900">TIỆM NHÀ TÁO POS</h1>
             <p className="text-xs text-gray-500 font-medium">Đăng nhập tài khoản Quản lý / Nhân viên</p>
 
-            {/* ĐÈN BÁO CLOUD HIỂN THỊ TRỰC TIẾP TRÊN MÀN HÌNH ĐĂNG NHẬP */}
-            <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border mt-2 ${supabase ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
-              {supabase ? <CheckCircle2 size={13} /> : <AlertCircle size={13} />}
-              <span>{supabase ? '🟢 Cloud Ready (Đã nối mạng)' : '🔴 Chưa Nối Cloud (Vercel Env)'}</span>
+            {/* ĐÈN BÁO TRẠNG THÁI CLOUD CHI TIẾT */}
+            <div className="pt-1">
+              <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border ${cloudStatusMsg.includes('🟢') ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
+                <span>{cloudStatusMsg || 'Đang kiểm tra kết nối Cloud...'}</span>
+              </div>
             </div>
           </div>
 
@@ -607,7 +627,6 @@ export default function App() {
   return (
     <div className="flex h-screen bg-gray-100 font-sans overflow-hidden relative">
       
-      {/* OVERLAY NỀN ĐEN KHI MỞ MENU */}
       {showLeftMenu && (
         <div 
           onClick={() => setShowLeftMenu(false)} 
@@ -698,10 +717,10 @@ export default function App() {
               {activeTab === 'staff_issue' && '💬 Sự Cố'}
             </h2>
 
-            {/* ĐÈN BÁO TRẠNG THÁI CLOUD CÙNG NÚT XOAY TỰ ĐỘNG */}
-            <div className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 border ${supabase ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
+            {/* NÚT TỰ ĐỘNG XOAY ĐỒNG BỘ */}
+            <div className="px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 border bg-emerald-50 text-emerald-700 border-emerald-200">
               <RefreshCw size={11} className={isSyncing ? 'animate-spin' : ''} />
-              <span>{supabase ? 'Cloud Ready' : 'Chưa Nối Cloud'}</span>
+              <span className="hidden sm:inline">Auto-Sync</span>
             </div>
           </div>
 
