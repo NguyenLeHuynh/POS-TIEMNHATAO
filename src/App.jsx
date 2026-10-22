@@ -8,7 +8,7 @@ import {
   AlertTriangle, Calendar, Eye, Download, Send, X, FolderPlus, Menu, CheckCircle2, AlertCircle
 } from 'lucide-react';
 
-// 🟢 THÔNG TIN SUPABASE DÃ ĐƯỢC ĐỒNG BỘ CHUẨN CỦA NÍ
+// 🟢 THÔNG TIN SUPABASE CHUẨN CỦA NÍ
 const DIRECT_SUPABASE_URL = 'https://wnkybaylqkiimzrjmawv.supabase.co';
 const DIRECT_SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indua3liYXlscWtpaW16cmptYXd2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI2MzEwMDIsImV4cCI6MjEwODIwNzAwMn0.4OMkGtTs2Z_z5Kz1Ba71ML23BpMlJsza0QYlYj2-rjs';
 
@@ -246,10 +246,11 @@ export default function App() {
     if (!name) return;
     if (categories.includes(name)) return alert('Danh mục này đã tồn tại!');
 
-    await localDb.categories.add({ name });
     if (supabase) {
       try { await supabase.from('categories').insert([{ name }]); } catch (err) {}
     }
+    await localDb.categories.add({ name });
+
     setNewCatName('');
     loadAllData();
   };
@@ -258,13 +259,13 @@ export default function App() {
     if (catName === 'Tất cả') return alert('Không thể xóa danh mục này!');
     if (!window.confirm(`Bạn có chắc muốn xóa danh mục "${catName}"?`)) return;
 
+    if (supabase) {
+      try { await supabase.from('categories').delete().eq('name', catName); } catch (err) {}
+    }
     const allCats = await localDb.categories.toArray();
     const catObj = allCats.find(c => c.name === catName);
     if (catObj) await localDb.categories.delete(catObj.id);
 
-    if (supabase) {
-      try { await supabase.from('categories').delete().eq('name', catName); } catch (err) {}
-    }
     if (selectedCategory === catName) setSelectedCategory('Tất cả');
     loadAllData();
   };
@@ -311,35 +312,37 @@ export default function App() {
     setCart([]);
   };
 
-  // 🟢 CẤP TÀI KHOẢN NHÂN VIÊN (ĐÃ KHẮC PHỤC TRIỆT ĐỂ LỖI UUID)
+  // 🟢 CẤP TÀI KHOẢN NHÂN VIÊN (ĐÃ SỬA TRIỆT ĐỂ LỖI UUID)
   const handleCreateStaff = async (e) => {
     e.preventDefault();
     if (!newStaffName || !newStaffUser || !newStaffPass) return alert('Vui lòng nhập đủ thông tin!');
 
-    const cleanPayload = {
-      full_name: newStaffName,
+    // Payload sạch 100% không bao giờ chứa id
+    const supabasePayload = {
+      full_name: newStaffName.trim(),
       username: newStaffUser.trim(),
       password: newStaffPass.trim(),
       role: 'STAFF'
     };
 
-    // 1. Lưu vào bộ nhớ máy
-    try { await localDb.staff.add({ ...cleanPayload }); } catch (err) {}
-
-    // 2. Đẩy lên Supabase (Gửi object sạch độc lập không dính id số)
+    // 1. Đẩy lên Supabase TRƯỚC
     if (supabase) {
       try { 
-        const { error } = await supabase.from('staff').insert([{ ...cleanPayload }]);
+        const { error } = await supabase.from('staff').insert([supabasePayload]);
         if (error) {
-          alert(`⚠️ Đã lưu máy tính nhưng lỗi Cloud: ${error.message}`);
-        } else {
-          alert(`✅ Đã cấp thành công tài khoản "${newStaffName}" lên Cloud!`);
+          alert(`⚠️ Lỗi Cloud Supabase: ${error.message}`);
+          return;
         }
       } catch (err) {
-        alert(`Lỗi kết nối: ${err.message}`);
+        alert(`Lỗi kết nối Cloud: ${err.message}`);
+        return;
       }
     }
 
+    // 2. Lưu vào bộ nhớ máy SAU
+    try { await localDb.staff.add({ ...supabasePayload }); } catch (err) {}
+
+    alert(`✅ Đã cấp thành công tài khoản "${newStaffName}" lên Cloud!`);
     setNewStaffName(''); setNewStaffUser(''); setNewStaffPass('');
     await loadAllData();
   };
@@ -347,11 +350,11 @@ export default function App() {
   const handleDeleteStaff = async (id) => {
     if (!window.confirm('Bạn có chắc muốn xóa nhân viên này?')) return;
     const staffObj = await localDb.staff.get(id);
-    await localDb.staff.delete(id);
 
     if (staffObj && supabase) {
       try { await supabase.from('staff').delete().eq('username', staffObj.username); } catch (err) {}
     }
+    await localDb.staff.delete(id);
     loadAllData();
   };
 
@@ -360,8 +363,8 @@ export default function App() {
     e.preventDefault();
     if (!editingProduct.name || !editingProduct.price) return;
 
-    const cleanPayload = {
-      name: editingProduct.name,
+    const prodPayload = {
+      name: editingProduct.name.trim(),
       price: Number(editingProduct.price),
       category: editingProduct.category,
       image: editingProduct.image || '🍵',
@@ -369,16 +372,18 @@ export default function App() {
       is_available: true
     };
 
-    if (editingProduct.id) {
-      await localDb.products.update(editingProduct.id, cleanPayload);
-      if (supabase && typeof editingProduct.id === 'string' && editingProduct.id.length > 20) {
-        try { await supabase.from('products').update(cleanPayload).eq('id', editingProduct.id); } catch (err) {}
-      }
-    } else {
-      await localDb.products.add({ ...cleanPayload });
+    const isUUID = editingProduct.id && typeof editingProduct.id === 'string' && editingProduct.id.includes('-');
+
+    if (editingProduct.id && isUUID) {
       if (supabase) {
-        try { await supabase.from('products').insert([{ ...cleanPayload }]); } catch (err) {}
+        try { await supabase.from('products').update(prodPayload).eq('id', editingProduct.id); } catch (err) {}
       }
+      await localDb.products.update(editingProduct.id, prodPayload);
+    } else {
+      if (supabase) {
+        try { await supabase.from('products').insert([prodPayload]); } catch (err) {}
+      }
+      await localDb.products.add({ ...prodPayload });
     }
 
     setShowProductModal(false);
@@ -388,29 +393,29 @@ export default function App() {
 
   const handleDeleteProduct = async (id) => {
     if (!window.confirm('Bạn có chắc muốn xóa món nước này khỏi menu?')) return;
-    await localDb.products.delete(id);
-    if (supabase) {
+    if (supabase && typeof id === 'string' && id.includes('-')) {
       try { await supabase.from('products').delete().eq('id', id); } catch (err) {}
     }
+    await localDb.products.delete(id);
     loadAllData();
   };
 
-  // 🟢 QUẢN LÝ KHO NGUYÊN LIỆU (ĐÃ KHẮC PHỤC SỰ CỐ THÊM KHO)
+  // 🟢 QUẢN LÝ KHO NGUYÊN LIỆU (ĐÃ SỬA THÊM/SỬA KHO)
   const handleAddInventory = async (e) => {
     e.preventDefault();
     if (!newInvItem.name) return;
     
-    const cleanPayload = { 
-      name: newInvItem.name, 
+    const invPayload = { 
+      name: newInvItem.name.trim(), 
       quantity: Number(newInvItem.quantity), 
-      unit: newInvItem.unit, 
+      unit: newInvItem.unit.trim(), 
       min_quantity: Number(newInvItem.min_quantity) 
     };
 
-    await localDb.inventory.add({ ...cleanPayload });
     if (supabase) {
-      try { await supabase.from('inventory').insert([{ ...cleanPayload }]); } catch (err) {}
+      try { await supabase.from('inventory').insert([invPayload]); } catch (err) {}
     }
+    await localDb.inventory.add({ ...invPayload });
 
     setNewInvItem({ name: '', quantity: 10, unit: 'kg', min_quantity: 3 });
     setShowInvModal(false);
@@ -419,21 +424,21 @@ export default function App() {
 
   const updateInventoryQty = async (id, delta) => {
     const item = inventory.find(x => x.id === id);
-    if (item) {
-      const newQty = Math.max(0, Number(item.quantity) + delta);
-      try { await localDb.inventory.update(id, { quantity: newQty }); } catch (e) {}
-      
-      if (supabase) {
-        try { 
-          if (typeof id === 'string' && id.length > 20) {
-            await supabase.from('inventory').update({ quantity: newQty }).eq('id', id);
-          } else {
-            await supabase.from('inventory').update({ quantity: newQty }).eq('name', item.name);
-          }
-        } catch (err) {}
-      }
-      loadAllData();
+    if (!item) return;
+
+    const newQty = Math.max(0, Number(item.quantity) + delta);
+
+    if (supabase) {
+      try { 
+        if (typeof id === 'string' && id.includes('-')) {
+          await supabase.from('inventory').update({ quantity: newQty }).eq('id', id);
+        } else {
+          await supabase.from('inventory').update({ quantity: newQty }).eq('name', item.name);
+        }
+      } catch (err) {}
     }
+    try { await localDb.inventory.update(id, { quantity: newQty }); } catch (e) {}
+    loadAllData();
   };
 
   const exportInventoryExcel = () => {
@@ -520,20 +525,20 @@ export default function App() {
       status: 'PENDING',
       created_at: new Date().toISOString()
     };
-    await localDb.issue_reports.add({ ...report });
     if (supabase) {
-      try { await supabase.from('issue_reports').insert([{ ...report }]); } catch (err) {}
+      try { await supabase.from('issue_reports').insert([report]); } catch (err) {}
     }
+    await localDb.issue_reports.add({ ...report });
     setNewIssueTitle(''); setNewIssueContent('');
     alert('Đã gửi báo cáo lên Chủ Quán!');
     loadAllData();
   };
 
   const resolveIssue = async (id) => {
-    await localDb.issue_reports.update(id, { status: 'RESOLVED' });
-    if (supabase) {
+    if (supabase && typeof id === 'string' && id.includes('-')) {
       try { await supabase.from('issue_reports').update({ status: 'RESOLVED' }).eq('id', id); } catch (err) {}
     }
+    await localDb.issue_reports.update(id, { status: 'RESOLVED' });
     loadAllData();
   };
 
@@ -599,19 +604,19 @@ export default function App() {
       items_json: JSON.stringify(cart)
     };
 
-    await localDb.orders.add({ ...orderData });
     if (supabase) {
-      try { await supabase.from('orders').insert([{ ...orderData }]); } catch (err) {}
+      try { await supabase.from('orders').insert([orderData]); } catch (err) {}
     }
+    await localDb.orders.add({ ...orderData });
 
     for (const cartItem of cart) {
       const p = products.find(x => x.name === cartItem.name);
       if (p) {
         const updatedStock = Math.max(0, (p.stock || 0) - cartItem.qty);
-        if (p.id) await localDb.products.update(p.id, { stock: updatedStock, is_available: updatedStock > 0 });
-        if (supabase && p.id) {
+        if (supabase && p.id && typeof p.id === 'string' && p.id.includes('-')) {
           try { await supabase.from('products').update({ stock: updatedStock, is_available: updatedStock > 0 }).eq('id', p.id); } catch (err) {}
         }
+        if (p.id) await localDb.products.update(p.id, { stock: updatedStock, is_available: updatedStock > 0 });
       }
     }
 
