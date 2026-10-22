@@ -60,6 +60,10 @@ export default function App() {
   const [showQRModal, setShowQRModal] = useState(false);
   const [discountPercent, setDiscountPercent] = useState(0);
 
+  // 🖨️ TRẠNG THÁI CHUYÊN DỤNG CHO IN BILL (SỬA TRIỆT ĐỂ LỖI IN TRẮNG)
+  const [printOrder, setPrintOrder] = useState(null);
+  const [printType, setPrintType] = useState('ORDER'); // 'ORDER' | 'REPORT'
+
   // 🟢 QUẢN LÝ DANH MỤC ĐỘNG
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -67,7 +71,6 @@ export default function App() {
 
   // 🟢 LỊCH SỬ BILL & XEM CHI TIẾT
   const [selectedOrderDetails, setSelectedOrderDetails] = useState(null);
-  const [reprintOrder, setReprintOrder] = useState(null);
 
   // 🟢 DANH SÁCH MÓN NƯỚC & KHO
   const [products, setProducts] = useState(DEFAULT_PRODUCTS);
@@ -108,7 +111,7 @@ export default function App() {
     startApp();
   }, []);
 
-  // 🔄 ĐỒNG BỘ NẦM CỨ MỖI 5 GIÂY
+  // 🔄 ĐỒNG BỘ NGẦM CỨ MỖI 5 GIÂY
   useEffect(() => {
     if (!currentUser) return;
     const interval = setInterval(() => {
@@ -241,18 +244,16 @@ export default function App() {
     } catch (e) {}
   };
 
-  // 📂 1. THÊM & XÓA DANH MỤC MÓN (HOẠT ĐỘNG TỨC THÌ 100%)
+  // 📂 1. THÊM & XÓA DANH MỤC MÓN
   const handleAddCategory = async (e) => {
     e.preventDefault();
     const name = newCatName.trim();
     if (!name) return;
     if (categories.includes(name)) return alert('Danh mục này đã tồn tại!');
 
-    // Cập nhật giao diện lập tức
     setCategories(prev => [...prev, name]);
     setNewCatName('');
 
-    // Đẩy ngầm lên Supabase & lưu máy
     if (supabase) {
       try { await supabase.from('categories').insert([{ name }]); } catch (err) {}
     }
@@ -318,7 +319,7 @@ export default function App() {
     setCart([]);
   };
 
-  // 👥 2. CẤP TÀI KHOẢN NHÂN VIÊN (HOẠT ĐỘNG TỨC THÌ 100%)
+  // 👥 2. CẤP TÀI KHOẢN NHÂN VIÊN
   const handleCreateStaff = async (e) => {
     e.preventDefault();
     if (!newStaffName || !newStaffUser || !newStaffPass) return alert('Vui lòng nhập đủ thông tin!');
@@ -364,7 +365,7 @@ export default function App() {
     try { await localDb.staff.delete(id); } catch (err) {}
   };
 
-  // 🍵 3. QUẢN LÝ MÓN NƯỚC (THÊM / SỬA / XÓA HOẠT ĐỘNG TỨC THÌ 100%)
+  // 🍵 3. QUẢN LÝ MÓN NƯỚC (THÊM / SỬA / XÓA)
   const handleSaveProduct = async (e) => {
     e.preventDefault();
     if (!editingProduct.name || !editingProduct.price) return alert('Vui lòng nhập tên và giá món!');
@@ -381,7 +382,6 @@ export default function App() {
     const isUUID = editingProduct.id && typeof editingProduct.id === 'string' && editingProduct.id.includes('-');
 
     if (editingProduct.id) {
-      // Cập nhật món đã có
       setProducts(prev => prev.map(p => p.id === editingProduct.id ? { ...p, ...prodPayload } : p));
 
       if (supabase && isUUID) {
@@ -389,12 +389,11 @@ export default function App() {
       }
       try { await localDb.products.update(editingProduct.id, prodPayload); } catch (err) {}
     } else {
-      // Thêm món mới
       let newProd = { ...prodPayload, id: `local_prod_${Date.now()}` };
 
       if (supabase) {
         try {
-          const { data, error } = await supabase.from('products').insert([prodPayload]).select();
+          const { data } = await supabase.from('products').insert([prodPayload]).select();
           if (data && data.length > 0) newProd = data[0];
         } catch (err) {}
       }
@@ -417,7 +416,7 @@ export default function App() {
     try { await localDb.products.delete(id); } catch (err) {}
   };
 
-  // 📦 4. QUẢN LÝ KHO NGUYÊN LIỆU (THÊM / SỬA KHO TỨC THÌ 100%)
+  // 📦 4. QUẢN LÝ KHO NGUYÊN LIỆU
   const handleAddInventory = async (e) => {
     e.preventDefault();
     if (!newInvItem.name) return alert('Vui lòng nhập tên nguyên liệu!');
@@ -433,7 +432,7 @@ export default function App() {
 
     if (supabase) {
       try {
-        const { data, error } = await supabase.from('inventory').insert([invPayload]).select();
+        const { data } = await supabase.from('inventory').insert([invPayload]).select();
         if (data && data.length > 0) newInv = data[0];
       } catch (err) {}
     }
@@ -606,6 +605,7 @@ export default function App() {
 
   const dynamicQrUrl = `https://img.vietqr.io/image/${BANK_CONFIG.BANK_ID}-${BANK_CONFIG.ACCOUNT_NO}-compact2.png?amount=${finalTotal}&addInfo=TiemNhaTao%20HD&accountName=${encodeURIComponent(BANK_CONFIG.ACCOUNT_NAME)}`;
 
+  // 🖨️ XỬ LÝ CHECKOUT VÀ IN BILL CHUẨN (KHÔNG BỊ TRẮNG / 0Đ)
   const handleCheckout = async () => {
     if (cart.length === 0) return alert('Chưa chọn món nào!');
     if (paymentMethod === 'TRANSFER' && !showQRModal) {
@@ -627,11 +627,21 @@ export default function App() {
       items_json: JSON.stringify(cart)
     };
 
+    // 1. Lưu cố định đơn hàng vào State In Bill
+    setPrintType('ORDER');
+    setPrintOrder({
+      ...orderData,
+      items: [...cart],
+      isReprint: false
+    });
+
+    // 2. Lưu lên Supabase & DB
     if (supabase) {
       try { await supabase.from('orders').insert([orderData]); } catch (err) {}
     }
     await localDb.orders.add({ ...orderData });
 
+    // 3. Trừ tồn kho món
     for (const cartItem of cart) {
       const p = products.find(x => x.name === cartItem.name);
       if (p) {
@@ -643,28 +653,46 @@ export default function App() {
       }
     }
 
-    setReprintOrder(null);
-    setTimeout(() => { window.print(); }, 100);
-
+    // 4. Reset giỏ hàng & đóng Modal
     setCart([]);
     setShowQRModal(false);
     setShowCartModal(false);
     setDiscountPercent(0);
     loadAllData();
-  };
 
-  const handleReprintHistoryOrder = (ord) => {
-    setReprintOrder(ord);
+    // 5. Mở hộp thoại In sau khi DOM đã render xong dữ liệu
     setTimeout(() => {
       window.print();
-    }, 150);
+    }, 250);
+  };
+
+  // 🖨️ IN LẠI BILL LỊCH SỬ
+  const handleReprintHistoryOrder = (ord) => {
+    const items = ord.items_json ? JSON.parse(ord.items_json) : [];
+    setPrintType('ORDER');
+    setPrintOrder({
+      ...ord,
+      items: items,
+      isReprint: true
+    });
+    setTimeout(() => {
+      window.print();
+    }, 250);
+  };
+
+  // 🖨️ IN BÁO CÁO CA DOANH THU
+  const handlePrintDailyReport = () => {
+    setPrintType('REPORT');
+    setTimeout(() => {
+      window.print();
+    }, 250);
   };
 
   const todayCash = todayOrders.reduce((sum, ord) => sum + Number(ord.cash_amount || 0), 0);
   const todayTransfer = todayOrders.reduce((sum, ord) => sum + Number(ord.transfer_amount || 0), 0);
   const todayTotal = todayCash + todayTransfer;
 
-  // 🔴 MÀN HÌNH ĐĂNG NHẬP (ANIMATION BẮT MẮT)
+  // 🔴 MÀN HÌNH ĐĂNG NHẬP
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-emerald-950 to-slate-900 flex items-center justify-center p-4 font-sans relative overflow-hidden">
@@ -714,7 +742,7 @@ export default function App() {
         <div onClick={() => setShowLeftMenu(false)} className="fixed inset-0 bg-slate-950/60 z-40 backdrop-blur-sm transition-opacity" />
       )}
 
-      {/* THANH SIDEBAR MENU BÊN TRÁI (HIỆU ỨNG TRƯỢT VÀ NỔI ĐẸP MẮT) */}
+      {/* THANH SIDEBAR MENU BÊN TRÁI */}
       <aside className={`fixed inset-y-0 left-0 w-64 bg-slate-900 text-white flex flex-col justify-between shadow-2xl z-50 transition-transform duration-300 ease-out ${showLeftMenu ? 'translate-x-0' : '-translate-x-full'}`}>
         <div>
           <div className="p-4 border-b border-slate-800/80 flex items-center justify-between">
@@ -754,7 +782,7 @@ export default function App() {
       {/* MAIN CONTENT AREA */}
       <main className="flex-1 flex flex-col overflow-hidden w-full min-w-0">
         
-        {/* HEADER TOP ĐIỀU HƯỚNG SANG TRỌNG */}
+        {/* HEADER TOP */}
         <header className="h-16 bg-white/80 backdrop-blur-md border-b border-gray-200/80 px-4 md:px-6 flex items-center justify-between shadow-sm z-10">
           <div className="flex items-center gap-3">
             <button onClick={() => setShowLeftMenu(true)} className="p-2.5 rounded-2xl bg-slate-900 text-white hover:bg-slate-800 active:scale-95 transition-all shadow-md flex items-center gap-2">
@@ -795,7 +823,7 @@ export default function App() {
           <div className="flex-1 flex flex-col overflow-hidden relative">
             <div className="flex-1 p-4 md:p-6 overflow-y-auto flex flex-col gap-4">
               
-              {/* THANH DANH MỤC CÓ THÊM MÓN */}
+              {/* THANH DANH MỤC */}
               <div className="flex gap-2 overflow-x-auto pb-1 items-center scrollbar-none">
                 {categories.map((cat) => (
                   <button 
@@ -817,7 +845,7 @@ export default function App() {
                 )}
               </div>
 
-              {/* LƯỚI THẺ MÓN NƯỚC (HIỆU ỨNG TƯƠI TẮN) */}
+              {/* LƯỚI THẺ MÓN NƯỚC */}
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3.5 pb-24">
                 {filteredProducts.map((item, idx) => (
                   <div 
@@ -1010,7 +1038,7 @@ export default function App() {
                   <h3 className="text-base md:text-lg font-extrabold text-gray-800">Doanh Thu Ngày {new Date().toLocaleDateString('vi-VN')}</h3>
                   <p className="text-[11px] text-gray-500">Thu ngân ca: <span className="font-bold text-emerald-700">{currentUser.full_name}</span></p>
                 </div>
-                <button onClick={() => { setReprintOrder(null); window.print(); }} className="bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2.5 rounded-2xl text-xs font-extrabold flex items-center gap-1.5 shadow-md active:scale-95 transition-all">
+                <button onClick={handlePrintDailyReport} className="bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2.5 rounded-2xl text-xs font-extrabold flex items-center gap-1.5 shadow-md active:scale-95 transition-all">
                   <Printer size={15} /> In Báo Cáo Ca
                 </button>
               </div>
@@ -1317,7 +1345,7 @@ export default function App() {
         </div>
       )}
 
-      {/* POPUP THÊM / SỬA MÓN NƯỚC (ĐẦY ĐỦ CÁC Ô NHẬP TỒN KHO & DANH MỤC) */}
+      {/* POPUP THÊM / SỬA MÓN NƯỚC */}
       {showProductModal && editingProduct && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl animate-in fade-in zoom-in-95">
@@ -1416,117 +1444,101 @@ export default function App() {
         </div>
       )}
 
-      {/* 🖨️ KHU VỰC IN BILL MÁY IN KHỔ GIẤY K80 */}
-      <div id="print-area" className="hidden print:block p-2 text-[11px] font-mono leading-tight">
+      {/* 🖨️ KHU VỰC IN BILL MÁY IN KHỔ GIẤY K80 (ĐÃ FIX CHUẨN SÁT MÉP, KHÔNG BỊ TRẮNG / 0Đ / KHÔNG CÓ URL) */}
+      <div id="print-area" className="hidden print:block font-mono text-[11px] leading-tight">
+        <style>{`
+          @media print {
+            body * {
+              visibility: hidden !important;
+            }
+            #print-area, #print-area * {
+              visibility: visible !important;
+            }
+            #print-area {
+              position: absolute !important;
+              left: 0 !important;
+              top: 0 !important;
+              width: 80mm !important;
+              padding: 3mm !important;
+              margin: 0 !important;
+              font-family: monospace !important;
+              color: #000 !important;
+              background: #fff !important;
+            }
+            @page {
+              size: 80mm auto;
+              margin: 0;
+            }
+          }
+        `}</style>
+
         <div className="text-center font-extrabold text-sm uppercase">TIỆM NHÀ TÁO POS</div>
         <div className="text-center text-[10px]">Cửa Hàng Matcha & Cà Phê</div>
         <div className="border-b border-black my-1 border-dashed"></div>
 
-        {reprintOrder ? (
+        {printType === 'REPORT' ? (
           <div>
-            <div className="text-center font-bold text-xs my-0.5">[ IN LẠI HÓA ĐƠN ]</div>
-            <div className="flex justify-between text-[10px]">
-              <span>Mã HD: #{reprintOrder.code || 'BILL'}</span>
-              <span>{new Date(reprintOrder.created_at).toLocaleTimeString('vi-VN')}</span>
-            </div>
-            <div className="text-[10px]">Thu ngân: {reprintOrder.staff_name}</div>
-            <div className="border-b border-black my-1 border-dashed"></div>
-
-            <table className="w-full text-left">
-              <thead>
-                <tr className="border-b border-black">
-                  <th>Món</th>
-                  <th className="text-center">SL</th>
-                  <th className="text-right">T.Tiền</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(reprintOrder.items_json ? JSON.parse(reprintOrder.items_json) : []).map((item, idx) => (
-                  <tr key={idx}>
-                    <td>{item.name}</td>
-                    <td className="text-center">{item.qty}</td>
-                    <td className="text-right">{(item.price * item.qty).toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            <div className="border-b border-black my-1 border-dashed"></div>
-            <div className="flex justify-between font-bold text-xs">
-              <span>TỔNG TIỀN:</span>
-              <span>{Number(reprintOrder.total_amount).toLocaleString()} đ</span>
-            </div>
-            <div className="flex justify-between text-[10px]">
-              <span>Hình thức:</span>
-              <span>{reprintOrder.payment_method === 'CASH' ? 'Tiền mặt' : 'Chuyển khoản'}</span>
-            </div>
-
-            {reprintOrder.payment_method === 'TRANSFER' && (
-              <div className="text-center my-3 pt-2 border-t border-black border-dashed">
-                <div className="font-extrabold text-[10px] uppercase">QUÉT MÃ CHUYỂN KHOẢN MBBANK</div>
-                <img 
-                  src={`https://img.vietqr.io/image/${BANK_CONFIG.BANK_ID}-${BANK_CONFIG.ACCOUNT_NO}-compact2.png?amount=${reprintOrder.total_amount}&addInfo=TiemNhaTao%20HD&accountName=${encodeURIComponent(BANK_CONFIG.ACCOUNT_NAME)}`} 
-                  alt="MBBank VietQR Bill" 
-                  className="w-40 h-40 mx-auto my-1.5 object-contain"
-                />
-                <div className="text-[9px] font-bold">{BANK_CONFIG.ACCOUNT_NAME}</div>
-                <div className="text-[9px]">{BANK_CONFIG.ACCOUNT_NO} (MBBank)</div>
-              </div>
-            )}
-          </div>
-        ) : activeTab === 'daily_report' ? (
-          <div>
-            <div className="text-center font-bold my-1">BÁO CÁO TỔNG KẾT DOANH THU CA</div>
+            <div className="text-center font-bold text-xs my-1">BÁO CÁO TỔNG KẾT DOANH THU CA</div>
             <div>Ngày: {new Date().toLocaleDateString('vi-VN')}</div>
-            <div>Thu ngân: {currentUser.full_name}</div>
+            <div>Thu ngân: {currentUser?.full_name}</div>
             <div className="border-b border-black my-1 border-dashed"></div>
             <div className="flex justify-between"><span>Tiền mặt:</span><span>{todayCash.toLocaleString()} đ</span></div>
             <div className="flex justify-between"><span>Chuyển khoản:</span><span>{todayTransfer.toLocaleString()} đ</span></div>
             <div className="flex justify-between font-bold text-xs mt-1"><span>TỔNG DOANH THU:</span><span>{todayTotal.toLocaleString()} đ</span></div>
           </div>
-        ) : (
+        ) : printOrder ? (
           <div>
+            {printOrder.isReprint && <div className="text-center font-bold text-xs my-0.5">[ IN LẠI HÓA ĐƠN ]</div>}
             <div className="flex justify-between text-[10px]">
-              <span>Mã HD: #{Date.now().toString().slice(-6)}</span>
-              <span>{new Date().toLocaleTimeString('vi-VN')}</span>
+              <span>Mã HD: #{printOrder.code || 'BILL'}</span>
+              <span>{new Date(printOrder.created_at || Date.now()).toLocaleTimeString('vi-VN')}</span>
             </div>
-            <div className="text-[10px]">Thu ngân: {currentUser.full_name}</div>
+            <div className="text-[10px]">Thu ngân: {printOrder.staff_name}</div>
             <div className="border-b border-black my-1 border-dashed"></div>
 
-            <table className="w-full text-left">
+            <table className="w-full text-left text-[11px]">
               <thead>
                 <tr className="border-b border-black">
-                  <th>Món</th>
-                  <th className="text-center">SL</th>
-                  <th className="text-right">T.Tiền</th>
+                  <th className="py-0.5">Món</th>
+                  <th className="text-center py-0.5">SL</th>
+                  <th className="text-right py-0.5">T.Tiền</th>
                 </tr>
               </thead>
               <tbody>
-                {cart.map((item, idx) => (
+                {(printOrder.items || []).map((item, idx) => (
                   <tr key={idx}>
-                    <td>{item.name}</td>
-                    <td className="text-center">{item.qty}</td>
-                    <td className="text-right">{(item.price * item.qty).toLocaleString()}</td>
+                    <td className="py-0.5">
+                      {item.name}
+                      {item.note ? <div className="text-[9px] italic">({item.note})</div> : null}
+                    </td>
+                    <td className="text-center py-0.5">{item.qty}</td>
+                    <td className="text-right py-0.5">{((item.price || 0) * (item.qty || 1)).toLocaleString()}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
 
             <div className="border-b border-black my-1 border-dashed"></div>
+            {printOrder.discount_amount > 0 && (
+              <div className="flex justify-between text-[10px]">
+                <span>Giảm giá:</span>
+                <span>-{Number(printOrder.discount_amount).toLocaleString()} đ</span>
+              </div>
+            )}
             <div className="flex justify-between font-bold text-xs">
               <span>TỔNG TIỀN:</span>
-              <span>{finalTotal.toLocaleString()} đ</span>
+              <span>{Number(printOrder.total_amount || 0).toLocaleString()} đ</span>
             </div>
             <div className="flex justify-between text-[10px]">
               <span>Hình thức:</span>
-              <span>{paymentMethod === 'CASH' ? 'Tiền mặt' : 'Chuyển khoản'}</span>
+              <span>{printOrder.payment_method === 'CASH' ? 'Tiền mặt' : 'Chuyển khoản'}</span>
             </div>
 
-            {paymentMethod === 'TRANSFER' && (
+            {printOrder.payment_method === 'TRANSFER' && (
               <div className="text-center my-3 pt-2 border-t border-black border-dashed">
                 <div className="font-extrabold text-[10px] uppercase">QUÉT MÃ CHUYỂN KHOẢN MBBANK</div>
                 <img 
-                  src={dynamicQrUrl} 
+                  src={`https://img.vietqr.io/image/${BANK_CONFIG.BANK_ID}-${BANK_CONFIG.ACCOUNT_NO}-compact2.png?amount=${printOrder.total_amount}&addInfo=TiemNhaTao%20HD&accountName=${encodeURIComponent(BANK_CONFIG.ACCOUNT_NAME)}`} 
                   alt="MBBank VietQR Bill" 
                   className="w-40 h-40 mx-auto my-1.5 object-contain"
                 />
@@ -1535,7 +1547,7 @@ export default function App() {
               </div>
             )}
           </div>
-        )}
+        ) : null}
 
         <div className="border-b border-black my-1 border-dashed"></div>
         <div className="text-center italic text-[10px] mt-2">Cảm ơn quý khách & Hẹn gặp lại!</div>
