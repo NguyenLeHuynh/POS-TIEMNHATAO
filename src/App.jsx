@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx';
 import { 
   ShoppingCart, FileText, Printer, Plus, Minus, Trash2, 
   Search, QrCode, Package, UserCheck, Users, LogOut, Edit3, 
-  AlertTriangle, Calendar, Eye, Download, Send, X, FolderPlus, Menu, RefreshCw
+  AlertTriangle, Calendar, Eye, Download, Send, X, FolderPlus, Menu, RefreshCw, Wifi
 } from 'lucide-react';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -74,7 +74,7 @@ export default function App() {
   const [newStaffPass, setNewStaffPass] = useState('');
   const [todayOrders, setTodayOrders] = useState([]);
 
-  // Khởi tạo ứng dụng an toàn
+  // Khởi tạo ứng dụng
   useEffect(() => {
     const savedUser = localStorage.getItem('pos_current_user');
     if (savedUser) setCurrentUser(JSON.parse(savedUser));
@@ -133,36 +133,56 @@ export default function App() {
     }
   };
 
-  // 🔄 NẠP DỮ LIỆU TỪ DEXIE (KHÔNG BAO GIỜ BỊ ĐỨNG)
+  // 🔄 ĐỒNG BỘ DỮ LIỆU TỪ CLOUD
   const loadAllData = async () => {
     setIsSyncing(true);
     try {
-      // 1. Đọc dữ liệu cục bộ tức thì
+      // Đọc từ Supabase trước nếu có kết nối
+      if (supabase) {
+        try {
+          const { data: cloudStaff } = await supabase.from('staff').select('*');
+          if (cloudStaff && cloudStaff.length > 0) {
+            await localDb.staff.clear();
+            await localDb.staff.bulkAdd(cloudStaff);
+          }
+
+          const { data: cloudProducts } = await supabase.from('products').select('*');
+          if (cloudProducts && cloudProducts.length > 0) {
+            await localDb.products.clear();
+            await localDb.products.bulkAdd(cloudProducts);
+          }
+
+          const { data: cloudOrders } = await supabase.from('orders').select('*');
+          if (cloudOrders && cloudOrders.length > 0) {
+            await localDb.orders.clear();
+            await localDb.orders.bulkAdd(cloudOrders);
+          }
+
+          const { data: cloudInv } = await supabase.from('inventory').select('*');
+          if (cloudInv && cloudInv.length > 0) {
+            await localDb.inventory.clear();
+            await localDb.inventory.bulkAdd(cloudInv);
+          }
+
+          const { data: cloudCat } = await supabase.from('categories').select('*');
+          if (cloudCat && cloudCat.length > 0) {
+            await localDb.categories.clear();
+            await localDb.categories.bulkAdd(cloudCat);
+          }
+        } catch (e) {
+          console.warn('Kết nối Cloud thất bại, chuyển sang chế độ Local offline:', e);
+        }
+      }
+
+      // Đọc hiển thị ra giao diện từ Local DB
       const catList = await localDb.categories.toArray();
       setCategories(['Tất cả', ...catList.map(c => c.name)]);
-
       setProducts(await localDb.products.toArray());
       setInventory(await localDb.inventory.toArray());
       setStaffList(await localDb.staff.toArray());
       const issueList = await localDb.issue_reports.toArray();
       setIssueReports(issueList.reverse());
       fetchTodayOrders();
-
-      // 2. Thử hợp nhất dữ liệu từ Cloud (nếu Supabase có sẵn) mà KHÔNG xóa Dexie
-      if (supabase) {
-        try {
-          const { data: sData } = await supabase.from('staff').select('*');
-          if (sData && sData.length > 0) {
-            for (const item of sData) {
-              const exist = await localDb.staff.where('username').equals(item.username).first();
-              if (!exist) await localDb.staff.add(item);
-            }
-            setStaffList(await localDb.staff.toArray());
-          }
-        } catch (e) {
-          console.warn('Bỏ qua đồng bộ Supabase staff:', e);
-        }
-      }
     } catch (err) {
       console.error('Lỗi tải dữ liệu:', err);
     } finally {
@@ -202,7 +222,7 @@ export default function App() {
     }
   };
 
-  // Đăng Nhập
+  // 🟢 ĐĂNG NHẬP (TRỰC TIẾP TRÊN CLOUD XONG ĐẾN LOCAL)
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoginError('');
@@ -214,6 +234,20 @@ export default function App() {
       return;
     }
 
+    // Kiểm tra trực tiếp trên Supabase Cloud trước
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.from('staff').select('*').eq('username', loginUser).eq('password', loginPass).single();
+        if (data && !error) {
+          const user = { full_name: data.full_name, username: data.username, role: data.role };
+          setCurrentUser(user);
+          localStorage.setItem('pos_current_user', JSON.stringify(user));
+          return;
+        }
+      } catch (err) {}
+    }
+
+    // Nếu Cloud không có hoặc mất mạng thì kiểm tra ở máy
     const allStaff = await localDb.staff.toArray();
     const localStaff = allStaff.find(s => s.username === loginUser);
     if (localStaff && localStaff.password === loginPass) {
@@ -221,18 +255,6 @@ export default function App() {
       setCurrentUser(user);
       localStorage.setItem('pos_current_user', JSON.stringify(user));
       return;
-    }
-
-    if (supabase) {
-      try {
-        const { data } = await supabase.from('staff').select('*').eq('username', loginUser).eq('password', loginPass).single();
-        if (data) {
-          const user = { full_name: data.full_name, username: data.username, role: data.role };
-          setCurrentUser(user);
-          localStorage.setItem('pos_current_user', JSON.stringify(user));
-          return;
-        }
-      } catch (err) {}
     }
 
     setLoginError('Tài khoản hoặc mật khẩu không chính xác!');
@@ -258,7 +280,10 @@ export default function App() {
 
     await localDb.staff.add(newStaffObj);
     if (supabase) {
-      try { await supabase.from('staff').insert([newStaffObj]); } catch (err) {}
+      try { 
+        const { error } = await supabase.from('staff').insert([newStaffObj]);
+        if (error) alert(`⚠️ Lưu Ý: Chưa lưu được lên Cloud do: ${error.message}`);
+      } catch (err) {}
     }
 
     alert(`Đã cấp tài khoản thành công cho nhân viên: ${newStaffName}!`);
@@ -579,7 +604,7 @@ export default function App() {
         />
       )}
 
-      {/* 🟢 THANH SIDEBAR MENU BÊN TRÁI (ẨN HOÀN TOÀN MẶC ĐỊNH, CHỈ TRUỢT RA KHI BẤM ☰ MENU) */}
+      {/* 🟢 THANH SIDEBAR MENU BÊN TRÁI */}
       <aside className={`fixed inset-y-0 left-0 w-64 bg-slate-900 text-white flex flex-col justify-between shadow-2xl z-50 transition-transform duration-300 ease-in-out ${showLeftMenu ? 'translate-x-0' : '-translate-x-full'}`}>
         <div>
           <div className="p-4 border-b border-slate-800 flex items-center justify-between">
@@ -639,13 +664,12 @@ export default function App() {
         </div>
       </aside>
 
-      {/* MAIN CONTENT AREA (CHIẾM TRỌN 100% MÀN HÌNH) */}
+      {/* MAIN CONTENT AREA */}
       <main className="flex-1 flex flex-col overflow-hidden w-full min-w-0">
         
         {/* HEADER TOP ĐIỀU HƯỚNG */}
         <header className="h-14 md:h-16 bg-white border-b border-gray-200 px-3 md:px-6 flex items-center justify-between shadow-sm z-10">
-          <div className="flex items-center gap-3">
-            {/* Nút 3 gạch mở Slide Menu */}
+          <div className="flex items-center gap-2">
             <button 
               onClick={() => setShowLeftMenu(true)} 
               className="p-2 rounded-xl bg-slate-900 text-white hover:bg-slate-800 active:scale-95 transition-all flex items-center gap-1.5 shadow"
@@ -663,13 +687,14 @@ export default function App() {
               {activeTab === 'staff_issue' && '💬 Sự Cố'}
             </h2>
 
-            {/* Nút Làm Mới */}
+            {/* ĐÈN BÁO TRẠNG THÁI CLOUD SYNC */}
             <button 
               onClick={loadAllData} 
-              title="Làm mới dữ liệu"
-              className={`p-1.5 rounded-lg text-emerald-700 hover:bg-emerald-50 transition-all ${isSyncing ? 'animate-spin' : ''}`}
+              title="Bấm để đồng bộ dữ liệu Cloud mới nhất"
+              className={`px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 border ${supabase ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-600 border-red-200'}`}
             >
-              <RefreshCw size={16} />
+              <RefreshCw size={12} className={isSyncing ? 'animate-spin' : ''} />
+              <span>{supabase ? 'Cloud Ready' : 'Chưa Nối Cloud'}</span>
             </button>
           </div>
 
@@ -694,14 +719,12 @@ export default function App() {
           )}
         </header>
 
-        {/* 🛒 1. MÀN HÌNH POS GỌI MÓN (100% TRÀN VIỀN MÀN HÌNH) */}
+        {/* 🛒 1. MÀN HÌNH POS GỌI MÓN */}
         {activeTab === 'pos' && (
           <div className="flex-1 flex flex-col overflow-hidden relative">
             
-            {/* GRID DANH SÁCH MÓN NƯỚC */}
             <div className="flex-1 p-3 md:p-6 overflow-y-auto flex flex-col gap-3">
               
-              {/* LỌC DANH MỤC MÓN */}
               <div className="flex gap-2 overflow-x-auto pb-1 items-center scrollbar-none">
                 {categories.map((cat) => (
                   <button key={cat} onClick={() => setSelectedCategory(cat)} className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm whitespace-nowrap ${selectedCategory === cat ? 'bg-amber-800 text-white' : 'bg-white text-gray-600 border'}`}>
@@ -719,7 +742,6 @@ export default function App() {
                 )}
               </div>
 
-              {/* GRID MÓN NƯỚC (CO GIÃN ĐẸP TRÊN MỌI MÀN HÌNH) */}
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 pb-24">
                 {filteredProducts.map((item) => (
                   <div key={item.id} className={`group bg-white rounded-2xl p-3 border shadow-sm transition-all flex flex-col justify-between relative overflow-hidden ${(!item.is_available || item.stock <= 0) ? 'opacity-50 grayscale' : 'hover:shadow-md hover:border-emerald-500'}`}>
@@ -761,7 +783,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* 🟢 THANH NỔI GIỎ HÀNG DƯỚI ĐÁY MÀN HÌNH (BẤM VÀO MỚI NỔ POPUP HÓA ĐƠN) */}
+            {/* THANH NỔI GIỎ HÀNG DƯỚI ĐÁY */}
             <div className="fixed bottom-4 inset-x-4 max-w-2xl mx-auto bg-slate-900 text-white p-3 rounded-2xl flex items-center justify-between shadow-2xl z-30 border border-slate-700">
               <div className="flex items-center gap-3">
                 <div className="relative bg-emerald-600 p-2.5 rounded-xl shadow">
