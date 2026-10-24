@@ -248,7 +248,7 @@ export default function App() {
     } catch (e) {}
   };
 
-  // 📂 1. THÊM & XÓA DANH MỤC MÓN (ĐỒNG BỘ CHUẨN CLOUD)
+  // 📂 1. THÊM & XÓA DANH MỤC MÓN
   const handleAddCategory = async (e) => {
     e.preventDefault();
     const name = newCatName.trim();
@@ -257,7 +257,7 @@ export default function App() {
 
     if (supabase) {
       const { error } = await supabase.from('categories').insert([{ name }]);
-      if (error) return alert(`❌ Lỗi đồng bộ Supabase: ${error.message}\nHãy chạy câu lệnh Tắt RLS trên Supabase!`);
+      if (error) return alert(`❌ Lỗi đồng bộ Supabase: ${error.message}`);
     }
 
     setCategories(prev => [...prev, name]);
@@ -344,10 +344,7 @@ export default function App() {
 
     if (supabase) {
       const { data, error } = await supabase.from('staff').insert([staffPayload]).select();
-      if (error) {
-        alert(`❌ Lỗi đồng bộ Supabase: ${error.message}\nHãy kiểm tra xem đã Tắt RLS trên Supabase chưa!`);
-        return;
-      }
+      if (error) return alert(`❌ Lỗi đồng bộ Supabase: ${error.message}`);
       if (data && data.length > 0) newStaff = data[0];
     }
 
@@ -390,9 +387,13 @@ export default function App() {
     const isUUID = editingProduct.id && typeof editingProduct.id === 'string' && editingProduct.id.includes('-');
 
     if (editingProduct.id) {
-      if (supabase && isUUID) {
-        const { error } = await supabase.from('products').update(prodPayload).eq('id', editingProduct.id);
-        if (error) return alert(`❌ Lỗi cập nhật Supabase: ${error.message}`);
+      if (supabase) {
+        if (isUUID) {
+          const { error } = await supabase.from('products').update(prodPayload).eq('id', editingProduct.id);
+          if (error) return alert(`❌ Lỗi cập nhật Supabase: ${error.message}`);
+        } else {
+          await supabase.from('products').update(prodPayload).eq('name', editingProduct.name);
+        }
       }
       setProducts(prev => prev.map(p => p.id === editingProduct.id ? { ...p, ...prodPayload } : p));
       try { await localDb.products.update(editingProduct.id, prodPayload); } catch (err) {}
@@ -401,10 +402,7 @@ export default function App() {
 
       if (supabase) {
         const { data, error } = await supabase.from('products').insert([prodPayload]).select();
-        if (error) {
-          alert(`❌ Lỗi lưu món lên Supabase: ${error.message}\nHãy kiểm tra xem đã Tắt RLS trên Supabase chưa!`);
-          return;
-        }
+        if (error) return alert(`❌ Lỗi lưu món lên Supabase: ${error.message}`);
         if (data && data.length > 0) newProd = data[0];
       }
 
@@ -419,10 +417,14 @@ export default function App() {
 
   const handleDeleteProduct = async (id) => {
     if (!window.confirm('Bạn có chắc muốn xóa món nước này khỏi menu?')) return;
+    const p = products.find(x => x.id === id);
 
-    if (supabase && typeof id === 'string' && id.includes('-')) {
-      const { error } = await supabase.from('products').delete().eq('id', id);
-      if (error) return alert(`❌ Lỗi xóa món trên Supabase: ${error.message}`);
+    if (supabase) {
+      if (typeof id === 'string' && id.includes('-')) {
+        await supabase.from('products').delete().eq('id', id);
+      } else if (p) {
+        await supabase.from('products').delete().eq('name', p.name);
+      }
     }
 
     setProducts(prev => prev.filter(p => p.id !== id));
@@ -620,7 +622,7 @@ export default function App() {
 
   const dynamicQrUrl = `https://img.vietqr.io/image/${BANK_CONFIG.BANK_ID}-${BANK_CONFIG.ACCOUNT_NO}-compact2.png?amount=${finalTotal}&addInfo=TiemNhaTao%20HD&accountName=${encodeURIComponent(BANK_CONFIG.ACCOUNT_NAME)}`;
 
-  // 🖨️ XỬ LÝ CHECKOUT VÀ IN BILL CHUẨN
+  // 🖨️ XỬ LÝ CHECKOUT VÀ IN BILL CHUẨN CLOUD 100%
   const handleCheckout = async () => {
     if (cart.length === 0) return alert('Chưa chọn món nào!');
     if (paymentMethod === 'TRANSFER' && !showQRModal) {
@@ -649,18 +651,26 @@ export default function App() {
       isReprint: false
     });
 
+    // Save to Supabase Cloud
     if (supabase) {
       const { error } = await supabase.from('orders').insert([orderData]);
-      if (error) alert(`⚠️ Cảnh báo Cloud: Chưa lưu được đơn lên Cloud (${error.message})`);
+      if (error) {
+        console.error('Lỗi lưu đơn Supabase:', error);
+      }
     }
     await localDb.orders.add({ ...orderData });
 
+    // Trừ tồn kho món nước (Hỗ trợ fallback theo tên món nếu id không phải UUID)
     for (const cartItem of cart) {
       const p = products.find(x => x.name === cartItem.name);
       if (p) {
         const updatedStock = Math.max(0, (p.stock || 0) - cartItem.qty);
-        if (supabase && p.id && typeof p.id === 'string' && p.id.includes('-')) {
-          try { await supabase.from('products').update({ stock: updatedStock, is_available: updatedStock > 0 }).eq('id', p.id); } catch (err) {}
+        if (supabase) {
+          if (p.id && typeof p.id === 'string' && p.id.includes('-')) {
+            try { await supabase.from('products').update({ stock: updatedStock, is_available: updatedStock > 0 }).eq('id', p.id); } catch (err) {}
+          } else {
+            try { await supabase.from('products').update({ stock: updatedStock, is_available: updatedStock > 0 }).eq('name', p.name); } catch (err) {}
+          }
         }
         if (p.id) await localDb.products.update(p.id, { stock: updatedStock, is_available: updatedStock > 0 });
       }
