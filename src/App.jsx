@@ -60,9 +60,9 @@ export default function App() {
   const [showQRModal, setShowQRModal] = useState(false);
   const [discountPercent, setDiscountPercent] = useState(0);
 
-  // 🖨️ TRẠNG THÁI CHUYÊN DỤNG CHO IN BILL (SỬA TRIỆT ĐỂ LỖI IN TRẮNG)
+  // 🖨️ TRẠNG THÁI CHUYÊN DỤNG CHO IN BILL
   const [printOrder, setPrintOrder] = useState(null);
-  const [printType, setPrintType] = useState('ORDER'); // 'ORDER' | 'REPORT'
+  const [printType, setPrintType] = useState('ORDER');
 
   // 🟢 QUẢN LÝ DANH MỤC ĐỘNG
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
@@ -111,7 +111,7 @@ export default function App() {
     startApp();
   }, []);
 
-  // 🔄 ĐỒNG BỘ NGẦM CỨ MỖI 5 GIÂY
+  // 🔄 ĐỒNG BỘ NGẦM CỨ MỖI 5 GIÂY GIỮA CÁC THIẾT BỊ
   useEffect(() => {
     if (!currentUser) return;
     const interval = setInterval(() => {
@@ -151,54 +151,58 @@ export default function App() {
     }
   };
 
-  // 🔄 NẠP VÀ ĐỒNG BỘ DỮ LIỆU TỪ SUPABASE
+  // 🔄 NẠP VÀ ĐỒNG BỘ DỮ LIỆU TỪ SUPABASE CLOUD
   const loadAllData = async () => {
     try {
       if (supabase) {
         // 1. Nhân viên
-        const { data: cloudStaff } = await supabase.from('staff').select('*');
-        if (cloudStaff && cloudStaff.length > 0) {
+        const { data: cloudStaff, error: staffErr } = await supabase.from('staff').select('*');
+        if (!staffErr && cloudStaff) {
           setStaffList(cloudStaff);
-          try { await localDb.staff.clear(); await localDb.staff.bulkPut(cloudStaff); } catch (e) {}
+          try { await localDb.staff.clear(); if (cloudStaff.length > 0) await localDb.staff.bulkPut(cloudStaff); } catch (e) {}
         }
 
         // 2. Món nước
-        const { data: cloudProducts } = await supabase.from('products').select('*');
-        if (cloudProducts && cloudProducts.length > 0) {
-          setProducts(cloudProducts);
-          try { await localDb.products.clear(); await localDb.products.bulkPut(cloudProducts); } catch (e) {}
-        } else {
-          autoSeedCloudProducts();
+        const { data: cloudProducts, error: prodErr } = await supabase.from('products').select('*');
+        if (!prodErr && cloudProducts) {
+          if (cloudProducts.length > 0) {
+            setProducts(cloudProducts);
+            try { await localDb.products.clear(); await localDb.products.bulkPut(cloudProducts); } catch (e) {}
+          } else {
+            autoSeedCloudProducts();
+          }
         }
 
         // 3. Đơn hàng
-        const { data: cloudOrders } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
-        if (cloudOrders && cloudOrders.length > 0) {
-          try { await localDb.orders.clear(); await localDb.orders.bulkPut(cloudOrders); } catch (e) {}
+        const { data: cloudOrders, error: orderErr } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
+        if (!orderErr && cloudOrders) {
+          try { await localDb.orders.clear(); if (cloudOrders.length > 0) await localDb.orders.bulkPut(cloudOrders); } catch (e) {}
         }
 
         // 4. Kho nguyên liệu
-        const { data: cloudInv } = await supabase.from('inventory').select('*');
-        if (cloudInv && cloudInv.length > 0) {
-          setInventory(cloudInv);
-          try { await localDb.inventory.clear(); await localDb.inventory.bulkPut(cloudInv); } catch (e) {}
-        } else {
-          autoSeedCloudInventory();
+        const { data: cloudInv, error: invErr } = await supabase.from('inventory').select('*');
+        if (!invErr && cloudInv) {
+          if (cloudInv.length > 0) {
+            setInventory(cloudInv);
+            try { await localDb.inventory.clear(); await localDb.inventory.bulkPut(cloudInv); } catch (e) {}
+          } else {
+            autoSeedCloudInventory();
+          }
         }
 
         // 5. Danh mục
-        const { data: cloudCat } = await supabase.from('categories').select('*');
-        if (cloudCat && cloudCat.length > 0) {
+        const { data: cloudCat, error: catErr } = await supabase.from('categories').select('*');
+        if (!catErr && cloudCat && cloudCat.length > 0) {
           const catNames = cloudCat.map(c => c.name);
           setCategories(['Tất cả', ...new Set(catNames)]);
           try { await localDb.categories.clear(); await localDb.categories.bulkPut(cloudCat); } catch (e) {}
         }
 
         // 6. Báo cáo sự cố
-        const { data: cloudIssues } = await supabase.from('issue_reports').select('*');
-        if (cloudIssues && cloudIssues.length > 0) {
+        const { data: cloudIssues, error: issueErr } = await supabase.from('issue_reports').select('*');
+        if (!issueErr && cloudIssues) {
           setIssueReports(cloudIssues.reverse());
-          try { await localDb.issue_reports.clear(); await localDb.issue_reports.bulkPut(cloudIssues); } catch (e) {}
+          try { await localDb.issue_reports.clear(); if (cloudIssues.length > 0) await localDb.issue_reports.bulkPut(cloudIssues); } catch (e) {}
         }
       } else {
         const catList = await localDb.categories.toArray();
@@ -244,37 +248,42 @@ export default function App() {
     } catch (e) {}
   };
 
-  // 📂 1. THÊM & XÓA DANH MỤC MÓN
+  // 📂 1. THÊM & XÓA DANH MỤC MÓN (ĐỒNG BỘ CHUẨN CLOUD)
   const handleAddCategory = async (e) => {
     e.preventDefault();
     const name = newCatName.trim();
     if (!name) return;
     if (categories.includes(name)) return alert('Danh mục này đã tồn tại!');
 
+    if (supabase) {
+      const { error } = await supabase.from('categories').insert([{ name }]);
+      if (error) return alert(`❌ Lỗi đồng bộ Supabase: ${error.message}\nHãy chạy câu lệnh Tắt RLS trên Supabase!`);
+    }
+
     setCategories(prev => [...prev, name]);
     setNewCatName('');
-
-    if (supabase) {
-      try { await supabase.from('categories').insert([{ name }]); } catch (err) {}
-    }
     try { await localDb.categories.add({ name }); } catch (err) {}
+    await loadAllData();
   };
 
   const handleDeleteCategory = async (catName) => {
     if (catName === 'Tất cả') return alert('Không thể xóa danh mục này!');
     if (!window.confirm(`Bạn có chắc muốn xóa danh mục "${catName}"?`)) return;
 
+    if (supabase) {
+      const { error } = await supabase.from('categories').delete().eq('name', catName);
+      if (error) return alert(`❌ Lỗi xóa trên Supabase: ${error.message}`);
+    }
+
     setCategories(prev => prev.filter(c => c !== catName));
     if (selectedCategory === catName) setSelectedCategory('Tất cả');
 
-    if (supabase) {
-      try { await supabase.from('categories').delete().eq('name', catName); } catch (err) {}
-    }
     try {
       const allCats = await localDb.categories.toArray();
       const catObj = allCats.find(c => c.name === catName);
       if (catObj) await localDb.categories.delete(catObj.id);
     } catch (err) {}
+    await loadAllData();
   };
 
   // 🟢 ĐĂNG NHẬP
@@ -334,17 +343,12 @@ export default function App() {
     let newStaff = { ...staffPayload, id: `local_staff_${Date.now()}` };
 
     if (supabase) {
-      try { 
-        const { data, error } = await supabase.from('staff').insert([staffPayload]).select();
-        if (error) {
-          alert(`⚠️ Lỗi Cloud Supabase: ${error.message}`);
-          return;
-        }
-        if (data && data.length > 0) newStaff = data[0];
-      } catch (err) {
-        alert(`Lỗi kết nối Cloud: ${err.message}`);
+      const { data, error } = await supabase.from('staff').insert([staffPayload]).select();
+      if (error) {
+        alert(`❌ Lỗi đồng bộ Supabase: ${error.message}\nHãy kiểm tra xem đã Tắt RLS trên Supabase chưa!`);
         return;
       }
+      if (data && data.length > 0) newStaff = data[0];
     }
 
     setStaffList(prev => [...prev, newStaff]);
@@ -352,20 +356,24 @@ export default function App() {
 
     alert(`✅ Đã cấp thành công tài khoản "${newStaffName}"!`);
     setNewStaffName(''); setNewStaffUser(''); setNewStaffPass('');
+    await loadAllData();
   };
 
   const handleDeleteStaff = async (id) => {
     if (!window.confirm('Bạn có chắc muốn xóa nhân viên này?')) return;
     const staffObj = staffList.find(s => s.id === id);
-    setStaffList(prev => prev.filter(s => s.id !== id));
 
     if (staffObj && supabase) {
-      try { await supabase.from('staff').delete().eq('username', staffObj.username); } catch (err) {}
+      const { error } = await supabase.from('staff').delete().eq('username', staffObj.username);
+      if (error) return alert(`❌ Lỗi xóa nhân viên trên Supabase: ${error.message}`);
     }
+
+    setStaffList(prev => prev.filter(s => s.id !== id));
     try { await localDb.staff.delete(id); } catch (err) {}
+    await loadAllData();
   };
 
-  // 🍵 3. QUẢN LÝ MÓN NƯỚC (THÊM / SỬA / XÓA)
+  // 🍵 3. QUẢN LÝ MÓN NƯỚC (THÊM / SỬA / XÓA CHUẨN CLOUD)
   const handleSaveProduct = async (e) => {
     e.preventDefault();
     if (!editingProduct.name || !editingProduct.price) return alert('Vui lòng nhập tên và giá món!');
@@ -382,20 +390,22 @@ export default function App() {
     const isUUID = editingProduct.id && typeof editingProduct.id === 'string' && editingProduct.id.includes('-');
 
     if (editingProduct.id) {
-      setProducts(prev => prev.map(p => p.id === editingProduct.id ? { ...p, ...prodPayload } : p));
-
       if (supabase && isUUID) {
-        try { await supabase.from('products').update(prodPayload).eq('id', editingProduct.id); } catch (err) {}
+        const { error } = await supabase.from('products').update(prodPayload).eq('id', editingProduct.id);
+        if (error) return alert(`❌ Lỗi cập nhật Supabase: ${error.message}`);
       }
+      setProducts(prev => prev.map(p => p.id === editingProduct.id ? { ...p, ...prodPayload } : p));
       try { await localDb.products.update(editingProduct.id, prodPayload); } catch (err) {}
     } else {
       let newProd = { ...prodPayload, id: `local_prod_${Date.now()}` };
 
       if (supabase) {
-        try {
-          const { data } = await supabase.from('products').insert([prodPayload]).select();
-          if (data && data.length > 0) newProd = data[0];
-        } catch (err) {}
+        const { data, error } = await supabase.from('products').insert([prodPayload]).select();
+        if (error) {
+          alert(`❌ Lỗi lưu món lên Supabase: ${error.message}\nHãy kiểm tra xem đã Tắt RLS trên Supabase chưa!`);
+          return;
+        }
+        if (data && data.length > 0) newProd = data[0];
       }
 
       setProducts(prev => [...prev, newProd]);
@@ -404,16 +414,20 @@ export default function App() {
 
     setShowProductModal(false);
     setEditingProduct(null);
+    await loadAllData();
   };
 
   const handleDeleteProduct = async (id) => {
     if (!window.confirm('Bạn có chắc muốn xóa món nước này khỏi menu?')) return;
-    setProducts(prev => prev.filter(p => p.id !== id));
 
     if (supabase && typeof id === 'string' && id.includes('-')) {
-      try { await supabase.from('products').delete().eq('id', id); } catch (err) {}
+      const { error } = await supabase.from('products').delete().eq('id', id);
+      if (error) return alert(`❌ Lỗi xóa món trên Supabase: ${error.message}`);
     }
+
+    setProducts(prev => prev.filter(p => p.id !== id));
     try { await localDb.products.delete(id); } catch (err) {}
+    await loadAllData();
   };
 
   // 📦 4. QUẢN LÝ KHO NGUYÊN LIỆU
@@ -431,10 +445,9 @@ export default function App() {
     let newInv = { ...invPayload, id: `local_inv_${Date.now()}` };
 
     if (supabase) {
-      try {
-        const { data } = await supabase.from('inventory').insert([invPayload]).select();
-        if (data && data.length > 0) newInv = data[0];
-      } catch (err) {}
+      const { data, error } = await supabase.from('inventory').insert([invPayload]).select();
+      if (error) return alert(`❌ Lỗi thêm kho trên Supabase: ${error.message}`);
+      if (data && data.length > 0) newInv = data[0];
     }
 
     setInventory(prev => [...prev, newInv]);
@@ -442,6 +455,7 @@ export default function App() {
 
     setNewInvItem({ name: '', quantity: 10, unit: 'kg', min_quantity: 3 });
     setShowInvModal(false);
+    await loadAllData();
   };
 
   const updateInventoryQty = async (id, delta) => {
@@ -449,7 +463,6 @@ export default function App() {
     if (!item) return;
 
     const newQty = Math.max(0, Number(item.quantity) + delta);
-    setInventory(prev => prev.map(x => x.id === id ? { ...x, quantity: newQty } : x));
 
     if (supabase) {
       try { 
@@ -460,6 +473,8 @@ export default function App() {
         }
       } catch (err) {}
     }
+
+    setInventory(prev => prev.map(x => x.id === id ? { ...x, quantity: newQty } : x));
     try { await localDb.inventory.update(id, { quantity: newQty }); } catch (e) {}
   };
 
@@ -605,7 +620,7 @@ export default function App() {
 
   const dynamicQrUrl = `https://img.vietqr.io/image/${BANK_CONFIG.BANK_ID}-${BANK_CONFIG.ACCOUNT_NO}-compact2.png?amount=${finalTotal}&addInfo=TiemNhaTao%20HD&accountName=${encodeURIComponent(BANK_CONFIG.ACCOUNT_NAME)}`;
 
-  // 🖨️ XỬ LÝ CHECKOUT VÀ IN BILL CHUẨN (KHÔNG BỊ TRẮNG / 0Đ)
+  // 🖨️ XỬ LÝ CHECKOUT VÀ IN BILL CHUẨN
   const handleCheckout = async () => {
     if (cart.length === 0) return alert('Chưa chọn món nào!');
     if (paymentMethod === 'TRANSFER' && !showQRModal) {
@@ -627,7 +642,6 @@ export default function App() {
       items_json: JSON.stringify(cart)
     };
 
-    // 1. Lưu cố định đơn hàng vào State In Bill
     setPrintType('ORDER');
     setPrintOrder({
       ...orderData,
@@ -635,13 +649,12 @@ export default function App() {
       isReprint: false
     });
 
-    // 2. Lưu lên Supabase & DB
     if (supabase) {
-      try { await supabase.from('orders').insert([orderData]); } catch (err) {}
+      const { error } = await supabase.from('orders').insert([orderData]);
+      if (error) alert(`⚠️ Cảnh báo Cloud: Chưa lưu được đơn lên Cloud (${error.message})`);
     }
     await localDb.orders.add({ ...orderData });
 
-    // 3. Trừ tồn kho món
     for (const cartItem of cart) {
       const p = products.find(x => x.name === cartItem.name);
       if (p) {
@@ -653,20 +666,17 @@ export default function App() {
       }
     }
 
-    // 4. Reset giỏ hàng & đóng Modal
     setCart([]);
     setShowQRModal(false);
     setShowCartModal(false);
     setDiscountPercent(0);
     loadAllData();
 
-    // 5. Mở hộp thoại In sau khi DOM đã render xong dữ liệu
     setTimeout(() => {
       window.print();
     }, 250);
   };
 
-  // 🖨️ IN LẠI BILL LỊCH SỬ
   const handleReprintHistoryOrder = (ord) => {
     const items = ord.items_json ? JSON.parse(ord.items_json) : [];
     setPrintType('ORDER');
@@ -680,7 +690,6 @@ export default function App() {
     }, 250);
   };
 
-  // 🖨️ IN BÁO CÁO CA DOANH THU
   const handlePrintDailyReport = () => {
     setPrintType('REPORT');
     setTimeout(() => {
@@ -1444,7 +1453,7 @@ export default function App() {
         </div>
       )}
 
-      {/* 🖨️ KHU VỰC IN BILL MÁY IN KHỔ GIẤY K80 (ĐÃ FIX CHUẨN SÁT MÉP, KHÔNG BỊ TRẮNG / 0Đ / KHÔNG CÓ URL) */}
+      {/* 🖨️ KHU VỰC IN BILL MÁY IN KHỔ GIẤY K80 */}
       <div id="print-area" className="hidden print:block font-mono text-[11px] leading-tight">
         <style>{`
           @media print {
