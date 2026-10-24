@@ -842,27 +842,27 @@ export default function App() {
           <div className="flex-1 flex flex-col overflow-hidden relative">
             <div className="flex-1 p-4 md:p-6 overflow-y-auto flex flex-col gap-4">
               
-              {/* THANH DANH MỤC */}
-              <div className="flex gap-2 overflow-x-auto pb-1 items-center scrollbar-none">
-                {categories.map((cat) => (
-                  <button 
-                    key={cat} 
-                    onClick={() => setSelectedCategory(cat)} 
-                    className={`px-4 py-2 rounded-2xl text-xs font-bold transition-all active:scale-95 whitespace-nowrap shadow-sm ${selectedCategory === cat ? 'bg-amber-800 text-white shadow-amber-900/20' : 'bg-white text-gray-600 border border-gray-200/80 hover:bg-gray-50'}`}
-                  >
-                    {cat}
-                  </button>
-                ))}
+              {/* THANH DANH MỤC - ĐÃ FIX CHỐNG XẸP TRÊN ĐIỆN THOẠI */}
+<div className="shrink-0 min-h-[52px] flex gap-2 overflow-x-auto py-1.5 items-center scrollbar-none z-10 sticky top-0 bg-slate-50/95 backdrop-blur-sm">
+  {categories.map((cat) => (
+    <button 
+      key={cat} 
+      onClick={() => setSelectedCategory(cat)} 
+      className={`shrink-0 px-4 py-2.5 rounded-2xl text-xs font-bold transition-all active:scale-95 whitespace-nowrap shadow-sm ${selectedCategory === cat ? 'bg-amber-800 text-white shadow-amber-900/20' : 'bg-white text-gray-600 border border-gray-200/80 hover:bg-gray-50'}`}
+    >
+      {cat}
+    </button>
+  ))}
 
-                {currentUser.role === 'OWNER' && (
-                  <button 
-                    onClick={() => setShowCategoryModal(true)}
-                    className="px-3 py-2 rounded-2xl text-xs font-bold bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100 flex items-center gap-1 shrink-0 transition-all shadow-sm"
-                  >
-                    <FolderPlus size={14} /> Danh mục
-                  </button>
-                )}
-              </div>
+  {currentUser.role === 'OWNER' && (
+    <button 
+      onClick={() => setShowCategoryModal(true)}
+      className="shrink-0 px-3.5 py-2.5 rounded-2xl text-xs font-bold bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100 flex items-center gap-1 transition-all shadow-sm"
+    >
+      <FolderPlus size={14} /> Danh mục
+    </button>
+  )}
+</div>
 
               {/* LƯỚI THẺ MÓN NƯỚC */}
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3.5 pb-24">
