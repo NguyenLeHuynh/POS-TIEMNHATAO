@@ -26,6 +26,7 @@
   "devDependencies": {
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "oxlint": "^1.88.0"
+    "oxlint": "^1.88.0",
+    "vite-plugin-pwa": "^2.0.0"
   }
 }
